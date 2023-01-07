@@ -64,7 +64,7 @@ class EDA_analyzer():
         self.gridpoints_filtered = pd.DataFrame(np.array([row for i, row in enumerate(self.gridpoints_filtered_1) if i in filtered_index]))
         self.gridpoints_filtered.insert(0, 'atom_name', self.probe)
         self.gridpoints_filtered.columns = ['atom_name', 'X', 'Y', 'Z']
-        print("{:-^20}".format(str(len(self.gridpoints_filtered))+' gridpoints were generated'))
+        print(15*'-'+str(len(self.gridpoints_filtered))+' gridpoints were generated after filtration'+15*'-')
     def gridpoints_exporter(self,gridpoints):
         gridpoints.columns = ['atom_name','X','Y','Z']
         np.savetxt(self.molecule.split('.')[0]+'_grids.xyz',gridpoints.to_numpy(),fmt='%s')
@@ -73,7 +73,7 @@ class EDA_analyzer():
         contents = str(len(gridpoints))+'\n\n' + contents
         with open(self.molecule.split('.')[0]+'_grids.xyz', 'w') as file:
             file.write(contents)
-    def gridpoints_visualizer(self,axis,animation_speed,fps,viewpoint,ovito=[False,False,(600,500)],*val,eda_val='Eint_total,gas'):
+    def gridpoints_visualizer(self,axis,animation_speed,frame,fps,viewpoint,ovito=[False,False,(600,500),False],*val,eda_val='Eint_total,gas'):
         molecule = self.molecule_coordinates
         gridpoints = self.gridpoints_filtered
         molecule_atom_name = molecule.iloc[:,0:1]
@@ -127,7 +127,11 @@ class EDA_analyzer():
             molecule_v.add_to_scene()
             vp = viewpoint
             if ovito[1] == True:
-                vp.render_anim(size=ovito[2], filename=self.molecule.split('.')[0] + '_rotations.gif', fps=fps)
+                if ovito[3] == True:
+                    vp.render_anim(size=ovito[2], filename=self.molecule.split('.')[0] + '_rotations.gif', fps=fps)
+                else:
+                    mol = self.molecule.split('.')[0]
+                    vp.render_image(size=ovito[2], frame=frame, filename=f'{mol}_{frame}.png')
             gridpoints_v = import_file(self.molecule.split('.')[0]+'_gridpoints_rotations.xyz', columns = ['Particle Type', 'Position.X', 'Position.Y', 'Position.Z']+list(val))
             def modify_pipeline_input(frame: int, data: DataCollection):
                 if len(val) == 0:
@@ -140,10 +144,12 @@ class EDA_analyzer():
             data_1.cell.vis.enabled = False
             del data_1 # Done accessing input DataCollection of pipeline.
             if len(val) != 0:
+                top = self.gridpoints_nomorlized_EDA[eda_val].median() + self.gridpoints_nomorlized_EDA[eda_val].std()
+                btm = self.gridpoints_nomorlized_EDA[eda_val].median() - self.gridpoints_nomorlized_EDA[eda_val].std()
                 gridpoints_v.modifiers.append(ColorCodingModifier(
                     property = eda_val,
-                    start_value = self.gridpoints_nomorlized_EDA[eda_val].median() - self.gridpoints_nomorlized_EDA[eda_val].std(),
-                    end_value =  self.gridpoints_nomorlized_EDA[eda_val].median() + self.gridpoints_nomorlized_EDA[eda_val].std(),
+                    start_value = max(0,btm),
+                    end_value =  min(1,top),
                     gradient = ColorCodingModifier.Rainbow()))
                 mod2 = ConstructSurfaceModifier()
                 mod2.radius = 6
@@ -155,10 +161,14 @@ class EDA_analyzer():
             else:
                 pass
             gridpoints_v.add_to_scene()
-            vp.render_anim(size=ovito[2], filename=self.molecule.split('.')[0] + '_'+eda_val+'_gridpoints_rotations.gif', fps=fps)
+            if ovito[3] == True:
+                vp.render_anim(size=ovito[2], filename=self.molecule.split('.')[0] + '_'+eda_val+'_gridpoints_rotations.gif', fps=fps)
+            else:
+                mol = self.molecule.split('.')[0]
+                vp.render_image(size=ovito[2], frame=frame, filename=f'{mol}_{frame}_gridpoints.png')
             molecule_v.remove_from_scene()
             gridpoints_v.remove_from_scene()
-    def run_xTB(self):
+    def run_xTB(self,gfn=1,chrg=1):
         xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
         xtbiff_dir = subprocess.run(['which','xtbiff'],stdout=subprocess.PIPE).stdout.decode().strip()
         path = str(os.getcwd())
@@ -168,7 +178,7 @@ class EDA_analyzer():
         os.system('mkdir 1')
         os.system('cp '+self.molecule+ ' 1')
         os.chdir(path_1)
-        subprocess.run([xtb_dir, self.molecule, '--lmo','--gfn 1'],stdout=subprocess.DEVNULL)
+        subprocess.run([xtb_dir, self.molecule, '--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
         os.rename('xtblmoinfo','1')
         os.chdir(path)
         os.system('mkdir 2 3')
@@ -181,7 +191,7 @@ class EDA_analyzer():
                 f.write('\n\n')
                 np.savetxt(f,self.gridpoints_filtered.iloc[self.i:self.i+1].to_numpy(),fmt='%s')
                 f.close()
-            subprocess.run([xtb_dir, 'gridpoint.xyz','--chrg 1' ,'--lmo','--gfn 1'],stdout=subprocess.DEVNULL)
+            subprocess.run([xtb_dir, 'gridpoint.xyz',f'--chrg {chrg}' ,'--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
             os.rename('xtblmoinfo','2')
             os.system('mv -f '+'2 '+ path_3)
             os.chdir(path_3)
@@ -201,4 +211,12 @@ class EDA_analyzer():
         scaler = MinMaxScaler()
         self.gridpoints_nomorlized_EDA =pd.DataFrame(scaler.fit_transform(self.gridpoints_EDA[self.columns]))
         self.gridpoints_nomorlized_EDA.columns = self.columns
+    def xyz_exporter(self,axis,animation_speed,*val,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
+        self.gridpoints_visualizer(axis, animation_speed,0, 5, vp, [False,False,(1, 2),False], *val)
+    def anime_visualizer(self,fps,mol,figsize:tuple,*val,label='Eint_total,gas',vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
+        self.gridpoints_visualizer(0,3.6,0,fps,vp,[True,mol,figsize,True],*val,eda_val=label)
+    def image_visualizer(self,frame,mol,figsize:tuple,*val,label='Eint_total,gas',vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
+        self.gridpoints_visualizer(0,3.6,frame,1,vp,[True,mol,figsize,False],*val,eda_val=label)
+
+
 
