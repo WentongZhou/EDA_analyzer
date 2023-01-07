@@ -4,7 +4,6 @@ from numpy import linspace
 from scipy.spatial import distance
 from sklearn.preprocessing import MinMaxScaler
 import os
-import math
 import subprocess
 import scipy.spatial.transform as sst
 os.environ['OVITO_GUI_MODE'] = '1'
