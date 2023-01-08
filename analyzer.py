@@ -13,6 +13,16 @@ from ovito.data import *
 from ovito.pipeline import *
 from ovito.vis import *
 from ovito.qt_compat import QtCore
+import time
+def timer(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"{func.__name__} elapsed time: {elapsed_time} seconds")
+        return result
+    return wrapper
 class EDA_analyzer():
     def __init__(self,molecule,probe='Li',boundary=10,grid_spacing=1,sieve=5,cavity_thres=3):
         self.molecule = molecule
@@ -27,6 +37,7 @@ class EDA_analyzer():
         self.gridpoints_generator()
         self.gridpoints_filter()
         self.gridpoints_exporter(self.gridpoints_filtered)
+    @timer
     def molecule_extractor(self):
         f = open(self.molecule, 'r')
         lines = f.readlines()
@@ -39,6 +50,7 @@ class EDA_analyzer():
         coordinates = self.molecule_coordinates.iloc[:,1:4].to_numpy(dtype=float)
         dist=[distance.euclidean(self.origin,coordinate) for coordinate in coordinates]
         self.grid_length = np.array(dist).max()*1.414 + self.boundary
+    @timer
     def gridpoints_generator(self):
         length  = self.grid_length
         spacing = self.grid_spacing
@@ -49,6 +61,7 @@ class EDA_analyzer():
         grid = np.stack((self.X, self.Y, self.Z), axis=-1)
         self.gridpoints_coordinate = pd.DataFrame(np.reshape(grid, (-1, 3)))
         self.gridpoints_coordinate.insert(0,'atom_name',self.probe)
+    @timer
     def gridpoints_filter(self):
         gridpoints = self.gridpoints_coordinate.iloc[:,1:4].to_numpy(dtype=float)
         molecule   = self.molecule_coordinates.iloc[:,1:4].to_numpy(dtype=float)
@@ -65,6 +78,7 @@ class EDA_analyzer():
         self.gridpoints_filtered.columns = ['atom_name', 'X', 'Y', 'Z']
         print(15 * '-' + str(len(self.gridpoints_coordinate)) + ' gridpoints were generated to be filtered' + 15 * '-')
         print(15*'-'+str(len(self.gridpoints_filtered))+' gridpoints were generated after filtration'+15*'-')
+    @timer
     def gridpoints_exporter(self,gridpoints):
         gridpoints.columns = ['atom_name','X','Y','Z']
         np.savetxt(self.molecule.split('.')[0]+'_grids.xyz',gridpoints.to_numpy(),fmt='%s')
@@ -152,8 +166,8 @@ class EDA_analyzer():
                     end_value =  min(1,top),
                     gradient = ColorCodingModifier.Rainbow()))
                 mod2 = ConstructSurfaceModifier()
-                mod2.radius = 6
-                mod2.smoothing_level = 35
+                mod2.radius = 5.5
+                mod2.smoothing_level = 30
                 mod2.transfer_properties = True
                 mod2.vis.show_cap = False
                 mod2.vis.surface_transparency = 0.6
@@ -168,6 +182,7 @@ class EDA_analyzer():
                 vp.render_image(size=ovito[2], frame=frame, filename=f'{mol}_{frame}_gridpoints.png')
             molecule_v.remove_from_scene()
             gridpoints_v.remove_from_scene()
+    @timer
     def run_xTB(self,gfn=1,chrg=1):
         xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
         xtbiff_dir = subprocess.run(['which','xtbiff'],stdout=subprocess.PIPE).stdout.decode().strip()
@@ -211,10 +226,13 @@ class EDA_analyzer():
         scaler = MinMaxScaler()
         self.gridpoints_nomorlized_EDA =pd.DataFrame(scaler.fit_transform(self.gridpoints_EDA[self.columns]))
         self.gridpoints_nomorlized_EDA.columns = self.columns
+    @timer
     def xyz_exporter(self,axis,animation_speed,*val,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.gridpoints_visualizer(axis, animation_speed,0, 5, vp, [False,False,(1, 2),False], *val)
+    @timer
     def anime_visualizer(self,fps,mol,figsize:tuple,*val,label='Eint_total,gas',vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.gridpoints_visualizer(0,3.6,0,fps,vp,[True,mol,figsize,True],*val,eda_val=label)
+    @timer
     def image_visualizer(self,frame,mol,figsize:tuple,*val,label='Eint_total,gas',vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.gridpoints_visualizer(0,3.6,frame,1,vp,[True,mol,figsize,False],*val,eda_val=label)
 
