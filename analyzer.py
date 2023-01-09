@@ -151,7 +151,7 @@ class EDA_analyzer():
                 if len(val) == 0:
                     data.particles_.particle_types_.type_by_name_(self.probe).radius = 0.15
                 else:
-                    data.particles_.particle_types_.type_by_name_(self.probe).radius = 0.05
+                    data.particles_.particle_types_.type_by_name_(self.probe).radius = 0.01
             gridpoints_v.modifiers.append(modify_pipeline_input)
             data_1 = gridpoints_v.compute() # Evaluate new pipeline to gain access to visual elements associated with the imported data objects.
             data_1.particles.vis.radius = 0.2
@@ -229,8 +229,9 @@ class EDA_analyzer():
     def xyz_exporter(self,axis,animation_speed,*val,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.gridpoints_visualizer(axis, animation_speed,0, 5, vp, [False,False,(1, 2),False], *val)
     @timer
-    def anime_visualizer(self,axis,angle,fps,figsize:tuple,*val,mol=False,label='Eint_total,gas',vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
-        self.xyz_exporter(axis,angle,*val)
+    def anime_visualizer(self,axis,angle,fps,figsize:tuple,*val,mol=False,label='Eint_total,gas',expoter=True,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
+        if expoter == True:
+            self.xyz_exporter(axis,angle,*val)
         self.gridpoints_visualizer(0,3.6,0,fps,vp,[True,mol,figsize,True],*val,eda_val=label)
     @timer
     def image_visualizer(self,axis,angle,frame,figsize:tuple,*val,mol=True,label='Eint_total,gas',vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
