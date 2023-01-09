@@ -226,7 +226,6 @@ class EDA_analyzer():
         scaler = MinMaxScaler()
         self.gridpoints_nomorlized_EDA =pd.DataFrame(scaler.fit_transform(self.gridpoints_EDA[self.columns]))
         self.gridpoints_nomorlized_EDA.columns = self.columns
-    @timer
     def xyz_exporter(self,axis,animation_speed,*val,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.gridpoints_visualizer(axis, animation_speed,0, 5, vp, [False,False,(1, 2),False], *val)
     @timer
