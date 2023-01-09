@@ -37,6 +37,8 @@ class EDA_analyzer():
         self.gridpoints_generator()
         self.gridpoints_filter()
         self.gridpoints_exporter(self.gridpoints_filtered)
+        print(15 * '-' + str(len(self.gridpoints_coordinate)) + ' gridpoints were generated to be filtered' + 15 * '-')
+        print(15*'-'+str(len(self.gridpoints_filtered))+' gridpoints were generated after filtration'+15*'-')
     @timer
     def molecule_extractor(self):
         f = open(self.molecule, 'r')
@@ -76,8 +78,6 @@ class EDA_analyzer():
         self.gridpoints_filtered = pd.DataFrame(np.array([row for i, row in enumerate(self.gridpoints_filtered_1) if i in filtered_index]))
         self.gridpoints_filtered.insert(0, 'atom_name', self.probe)
         self.gridpoints_filtered.columns = ['atom_name', 'X', 'Y', 'Z']
-        print(15 * '-' + str(len(self.gridpoints_coordinate)) + ' gridpoints were generated to be filtered' + 15 * '-')
-        print(15*'-'+str(len(self.gridpoints_filtered))+' gridpoints were generated after filtration'+15*'-')
     @timer
     def gridpoints_exporter(self,gridpoints):
         gridpoints.columns = ['atom_name','X','Y','Z']
