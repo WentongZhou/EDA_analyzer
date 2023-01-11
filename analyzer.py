@@ -153,7 +153,7 @@ class EDA_analyzer():
                 if len(val) == 0:
                     data.particles_.particle_types_.type_by_name_(self.probe).radius = 0.15
                 else:
-                    data.particles_.particle_types_.type_by_name_(self.probe).radius = 0.01
+                    data.particles_.particle_types_.type_by_name_(self.probe).radius = 0.02
             gridpoints_v.modifiers.append(modify_pipeline_input)
             data_1 = gridpoints_v.compute() # Evaluate new pipeline to gain access to visual elements associated with the imported data objects.
             data_1.particles.vis.radius = 0.2
@@ -168,8 +168,8 @@ class EDA_analyzer():
                     end_value =  min(1,top),
                     gradient = ColorCodingModifier.Rainbow()))
                 mod2 = ConstructSurfaceModifier()
-                mod2.radius = 5.5
-                mod2.smoothing_level = 30
+                mod2.radius = 6
+                mod2.smoothing_level = 35
                 mod2.transfer_properties = True
                 mod2.vis.show_cap = False
                 mod2.vis.surface_transparency = 0.6
@@ -239,7 +239,7 @@ class EDA_analyzer():
     def image_visualizer(self,axis,angle,frame,figsize:tuple,*val,mol=True,label='Eint_total,gas',vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.xyz_exporter(axis, angle, *val)
         self.gridpoints_visualizer(0,3.6,frame,1,vp,[True,mol,figsize,False],*val,eda_val=label)
-
+@timer
 def SmilesToXYZ(smiles,file,gfn=2):
     xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
     m = Chem.MolFromSmiles(smiles)
