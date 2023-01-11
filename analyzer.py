@@ -240,12 +240,23 @@ class EDA_analyzer():
         self.xyz_exporter(axis, angle, *val)
         self.gridpoints_visualizer(0,3.6,frame,1,vp,[True,mol,figsize,False],*val,eda_val=label)
 
-def SmilesToXYZ(smiles,file):
+def SmilesToXYZ(smiles,file,gfn=2):
+    xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
     m = Chem.MolFromSmiles(smiles)
     m2=Chem.AddHs(m)
     AllChem.EmbedMolecule(m2)
     with open(file, 'w') as f:
-        f.write(Chem.MolToXYZBlock(m2, confId=0))
+        f.write(Chem.MolToXYZBlock(m2, confId=-1))
+    path = str(os.getcwd())
+    path_opt = path+'/opt'
+    os.system('mkdir opt')
+    os.system('mv '+file+ ' opt')
+    os.chdir(path_opt)
+    subprocess.run([xtb_dir, file, '--opt',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
+    os.system('mv xtbopt.xyz '+path)
+    os.chdir(path)
+    os.rename('xtbopt.xyz',file)
+    os.system('rm -rf opt')
     return file
 
 
