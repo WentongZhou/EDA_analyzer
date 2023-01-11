@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+from rdkit import Chem
+from rdkit.Chem import AllChem
 from numpy import linspace
 from scipy.spatial import distance
 from sklearn.preprocessing import MinMaxScaler
@@ -237,6 +239,14 @@ class EDA_analyzer():
     def image_visualizer(self,axis,angle,frame,figsize:tuple,*val,mol=True,label='Eint_total,gas',vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.xyz_exporter(axis, angle, *val)
         self.gridpoints_visualizer(0,3.6,frame,1,vp,[True,mol,figsize,False],*val,eda_val=label)
+
+def SmilesToXYZ(smiles,file):
+    m = Chem.MolFromSmiles(smiles)
+    m2=Chem.AddHs(m)
+    AllChem.EmbedMolecule(m2)
+    with open(file, 'w') as f:
+        f.write(Chem.MolToXYZBlock(m2, confId=0))
+    return file
 
 
 
