@@ -107,7 +107,7 @@ class EDA_analyzer():
                 rotation_matrix = sst.Rotation.from_rotvec(np.array([0, 0, angle])).as_matrix()
                 rotated = np.dot(reset,rotation_matrix)
                 if len(val) != 0:
-                    rotated = np.column_stack((rotated,self.gridpoints_nomorlized_EDA[list(val)].to_numpy()))
+                    rotated = np.column_stack((rotated,self.gridpoints_nomorlized[list(val)].to_numpy()))
                     rotated_coordinates.append(rotated)
                 else:
                     rotated_coordinates.append(rotated)
@@ -160,8 +160,8 @@ class EDA_analyzer():
             data_1.cell.vis.enabled = False
             del data_1 # Done accessing input DataCollection of pipeline.
             if len(val) != 0:
-                top = self.gridpoints_nomorlized_EDA[eda_val].median() + self.gridpoints_nomorlized_EDA[eda_val].std()
-                btm = self.gridpoints_nomorlized_EDA[eda_val].median() - self.gridpoints_nomorlized_EDA[eda_val].std()
+                top = self.gridpoints_nomorlized[eda_val].median() + self.gridpoints_nomorlized[eda_val].std()
+                btm = self.gridpoints_nomorlized[eda_val].median() - self.gridpoints_nomorlized[eda_val].std()
                 gridpoints_v.modifiers.append(ColorCodingModifier(
                     property = eda_val,
                     start_value = max(0,btm),
@@ -201,9 +201,13 @@ class EDA_analyzer():
         sigma_grid = np.array([map_dict.get(i,i) for i in atom_grid])
         ep_mix = np.sqrt(np.einsum('i,j-> ij', epsilon_mol,epsilon_grid))
         sig_mix = (np.add.outer(sigma_mol,sigma_grid))/2
-        self.lj_energy = 4*ep_mix*(np.power((sig_mix/dist_arr),6) - np.power((sig_mix/dist_arr),12))
-        self.lj_energy = pd.DataFrame(np.einsum('ij->j',self.lj_energy))
-        self.lj_energy.columns = ['LJ_energy']
+        self.gridpoints_lj = 4*ep_mix*(np.power((sig_mix/dist_arr),6) - np.power((sig_mix/dist_arr),12))
+        self.gridpoints_lj = pd.DataFrame(np.einsum('ij->j',self.gridpoints_lj))
+        self.gridpoints_lj.columns = ['LJ_energy']
+        scaler = MinMaxScaler()
+        self.gridpoints_nomorlized_lj =pd.DataFrame(scaler.fit_transform(self.gridpoints_lj['LJ_energy'].to_numpy().reshape(-1,1)))
+        self.gridpoints_nomorlized_lj.columns = ['LJ_energy']
+        self.gridpoints_nomorlized = self.gridpoints_lj
     @timer
     def run_xTB(self,gfn=1,chrg=1):
         xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
@@ -248,6 +252,7 @@ class EDA_analyzer():
         scaler = MinMaxScaler()
         self.gridpoints_nomorlized_EDA =pd.DataFrame(scaler.fit_transform(self.gridpoints_EDA[self.columns]))
         self.gridpoints_nomorlized_EDA.columns = self.columns
+        self.gridpoints_nomorlized = self.gridpoints_nomorlized_EDA
     def xyz_exporter(self,axis,animation_speed,*val,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.gridpoints_visualizer(axis, animation_speed,0, 5, vp, [False,False,(1, 2),False], *val)
     @timer
