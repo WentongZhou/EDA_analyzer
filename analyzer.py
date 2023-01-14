@@ -185,6 +185,26 @@ class EDA_analyzer():
             molecule_v.remove_from_scene()
             gridpoints_v.remove_from_scene()
     @timer
+    def run_lj(self):
+        grid_coord = np.loadtxt(self.molecule.split('.')[0]+'_grids.xyz',skiprows=2,usecols=[1,2,3])
+        mol_coord = np.loadtxt(self.molecule,skiprows=2,usecols=[1,2,3])
+        atom_grid = np.loadtxt(self.molecule.split('.')[0]+'_grids.xyz',dtype='str',skiprows=2,usecols=[0])
+        atom_coord = np.loadtxt(self.molecule,dtype='str',skiprows=2,usecols=[0])
+        dist_arr = self.dist_filtered.T
+        module_dir = os.path.dirname(__file__)
+        file_path = os.path.join(module_dir, 'LJ_potentials.csv')  
+        lj_potentials = pd.read_csv(file_path)
+        map_dict = lj_potentials.set_index('Atom').to_dict()['Epsilon']
+        epsilon_mol = np.array([map_dict.get(i,i) for i in atom_coord])
+        epsilon_grid = np.array([map_dict.get(i,i) for i in atom_grid])
+        sigma_mol = np.array([map_dict.get(i,i) for i in atom_coord])
+        sigma_grid = np.array([map_dict.get(i,i) for i in atom_grid])
+        ep_mix = np.sqrt(np.einsum('i,j-> ij', epsilon_mol,epsilon_grid))
+        sig_mix = (np.add.outer(sigma_mol,sigma_grid))/2
+        self.lj_energy = 4*ep_mix*(np.power((sig_mix/dist_arr),6) - np.power((sig_mix/dist_arr),12))
+        self.lj_energy = pd.DataFrame(np.einsum('ij->j',self.lj_energy))
+        self.lj_energy.columns = ['LJ_energy']
+    @timer
     def run_xTB(self,gfn=1,chrg=1):
         xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
         xtbiff_dir = subprocess.run(['which','xtbiff'],stdout=subprocess.PIPE).stdout.decode().strip()
