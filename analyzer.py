@@ -207,7 +207,7 @@ class EDA_analyzer():
         scaler = MinMaxScaler()
         self.gridpoints_nomorlized_lj =pd.DataFrame(scaler.fit_transform(self.gridpoints_lj['LJ_energy'].to_numpy().reshape(-1,1)))
         self.gridpoints_nomorlized_lj.columns = ['LJ_energy']
-        self.gridpoints_nomorlized = self.gridpoints_lj
+        self.gridpoints_nomorlized = self.gridpoints_nomorlized_lj
     @timer
     def run_xTB(self,gfn=1,chrg=1):
         xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
