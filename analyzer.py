@@ -7,6 +7,8 @@ from scipy.spatial import distance
 from sklearn.preprocessing import MinMaxScaler
 import os
 import subprocess
+import multiprocessing
+import concurrent.futures
 import scipy.spatial.transform as sst
 os.environ['OVITO_GUI_MODE'] = '1'
 from ovito.io import *
@@ -72,14 +74,15 @@ class EDA_analyzer():
         self.dist = distance.cdist(gridpoints, molecule, metric='euclidean')
         gridpoints_coordinate = self.gridpoints_coordinate.iloc[:,1:4].to_numpy()
         filtered_index = np.where(np.all((self.dist >= self.cavity_thres) , axis=1))[0]
-        self.gridpoints_filtered_1 = np.array([row for i, row in enumerate(gridpoints_coordinate) if i in filtered_index])
-        self.dist_filtered_1 = np.array([row for i, row in enumerate(self.dist) if i in filtered_index])
+        self.gridpoints_filtered_1 = gridpoints_coordinate[filtered_index]
+        self.dist_filtered_1 = distance.cdist(self.gridpoints_filtered_1, molecule, metric='euclidean')
         dist_filtered_min_1 = np.amin(self.dist_filtered_1, axis=1)
         filtered_index = np.where(dist_filtered_min_1 < self.sieve)[0]
-        self.dist_filtered = np.array([row for i, row in enumerate(self.dist_filtered_1) if i in filtered_index])
-        self.gridpoints_filtered = pd.DataFrame(np.array([row for i, row in enumerate(self.gridpoints_filtered_1) if i in filtered_index]))
+        self.gridpoints_filtered = pd.DataFrame(self.gridpoints_filtered_1[filtered_index])
+        self.dist_filtered = distance.cdist(self.gridpoints_filtered, molecule, metric='euclidean')
         self.gridpoints_filtered.insert(0, 'atom_name', self.probe)
         self.gridpoints_filtered.columns = ['atom_name', 'X', 'Y', 'Z']
+
     @timer
     def gridpoints_exporter(self,gridpoints):
         gridpoints.columns = ['atom_name','X','Y','Z']
