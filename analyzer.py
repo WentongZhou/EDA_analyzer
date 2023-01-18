@@ -37,10 +37,10 @@ class EDA_analyzer():
         self.origin = []
         self.molecule_extractor()
         self.gridpoints_generator()
-        self.gridpoints_filter()
-        self.gridpoints_exporter(self.gridpoints_filtered)
+        # self.gridpoints_filter()
+        # self.gridpoints_exporter(self.gridpoints_filtered)
         print(15 * '-' + str(len(self.gridpoints_coordinate)) + ' gridpoints were generated to be filtered' + 15 * '-')
-        print(15*'-'+str(len(self.gridpoints_filtered))+' gridpoints were generated after filtration'+15*'-')
+        # print(15*'-'+str(len(self.gridpoints_filtered))+' gridpoints were generated after filtration'+15*'-')
     @timer
     def molecule_extractor(self):
         f = open(self.molecule, 'r')
@@ -231,7 +231,6 @@ class EDA_analyzer():
                 f.write('1')
                 f.write('\n\n')
                 np.savetxt(f,self.gridpoints_filtered.iloc[self.i:self.i+1].to_numpy(),fmt='%s')
-                f.close()
             subprocess.run([xtb_dir, 'gridpoint.xyz',f'--chrg {chrg}' ,'--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
             os.rename('xtblmoinfo','2')
             os.system('mv -f '+'2 '+ path_3)
@@ -244,9 +243,9 @@ class EDA_analyzer():
             self.gridpoints_EDA.append(gridpoint_EDA)
         with open('int.txt', 'r') as f:
             lines = f.readlines()
-            self.columns =np.array(["_".join((line.split(':')[0]).split()) for line in lines[-11:-1]]).tolist()
+            columns =np.array(["_".join((line.split(':')[0]).split()) for line in lines[-11:-1]]).tolist()
         self.gridpoints_EDA = pd.DataFrame(self.gridpoints_EDA)
-        self.gridpoints_EDA.columns = self.columns
+        self.gridpoints_EDA.columns = columns
         os.chdir(path)
         os.system('rm -rf 1 2 3')
         scaler = MinMaxScaler()
@@ -256,8 +255,8 @@ class EDA_analyzer():
     def xyz_exporter(self,axis,animation_speed,*val,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.gridpoints_visualizer(axis, animation_speed,0, 5, vp, [False,False,(1, 2),False], *val)
     @timer
-    def anime_visualizer(self,axis,angle,fps,figsize:tuple,*val,mol=False,label='Eint_total,gas',expoter=True,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
-        if expoter == True:
+    def anime_visualizer(self,axis,angle,fps,figsize:tuple,*val,mol=False,label='Eint_total,gas',exporter=True,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
+        if exporter == True:
             self.xyz_exporter(axis,angle,*val)
         self.gridpoints_visualizer(0,3.6,0,fps,vp,[True,mol,figsize,True],*val,eda_val=label)
     @timer
