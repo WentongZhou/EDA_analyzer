@@ -39,10 +39,10 @@ class EDA_analyzer():
         self.origin = []
         self.molecule_extractor()
         self.gridpoints_generator()
-        # self.gridpoints_filter()
-        # self.gridpoints_exporter(self.gridpoints_filtered)
+        self.gridpoints_filter()
+        self.gridpoints_exporter(self.gridpoints_filtered)
         print(15 * '-' + str(len(self.gridpoints_coordinate)) + ' gridpoints were generated to be filtered' + 15 * '-')
-        # print(15*'-'+str(len(self.gridpoints_filtered))+' gridpoints were generated after filtration'+15*'-')
+        print(15*'-'+str(len(self.gridpoints_filtered))+' gridpoints were generated after filtration'+15*'-')
     @timer
     def molecule_extractor(self):
         f = open(self.molecule, 'r')
@@ -255,6 +255,13 @@ class EDA_analyzer():
         self.gridpoints_nomorlized_EDA =pd.DataFrame(scaler.fit_transform(self.gridpoints_EDA[self.columns]))
         self.gridpoints_nomorlized_EDA.columns = self.columns
         self.gridpoints_nomorlized = self.gridpoints_nomorlized_EDA
+    @timer
+    def run_Turbomole(self):
+        xtb_dir = subprocess.run(['which', 'xtb'], stdout=subprocess.PIPE).stdout.decode().strip()
+        path = str(os.getcwd())
+        path_1 = path + '/1'
+        path_2 = path + '/2'
+        path_3 = path + '/3'
     def xyz_exporter(self,axis,animation_speed,*val,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.gridpoints_visualizer(axis, animation_speed,0, 5, vp, [False,False,(1, 2),False], *val)
     @timer
@@ -266,25 +273,59 @@ class EDA_analyzer():
     def image_visualizer(self,axis,angle,frame,figsize:tuple,*val,mol=True,label='Eint_total,gas',vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.xyz_exporter(axis, angle, *val)
         self.gridpoints_visualizer(0,3.6,frame,1,vp,[True,mol,figsize,False],*val,eda_val=label)
-@timer
-def SmilesToXYZ(smiles,file,gfn=2):
-    xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
-    m = Chem.MolFromSmiles(smiles)
-    m2=Chem.AddHs(m)
-    AllChem.EmbedMolecule(m2)
-    with open(file, 'w') as f:
-        f.write(Chem.MolToXYZBlock(m2, confId=-1))
-    path = str(os.getcwd())
-    path_opt = path+'/opt'
-    os.system('mkdir opt')
-    os.system('mv '+file+ ' opt')
-    os.chdir(path_opt)
-    subprocess.run([xtb_dir, file, '--opt',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
-    os.system('mv xtbopt.xyz '+path)
-    os.chdir(path)
-    os.rename('xtbopt.xyz',file)
-    os.system('rm -rf opt')
-    return file
+
+
+
+class SmilesToXYZ():
+    def __init__(self,smiles,file,conformer_search=False):
+        self.smiles = smiles
+        self.xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
+        self.file = file
+        self.__call__()
+        self.crest_dir = subprocess.run(['which', 'crest3'], stdout=subprocess.PIPE).stdout.decode().strip()
+        if conformer_search == True:
+            self.conformer_search()
+            self.conformer_sorting()
+    def __call__(self,gfn=2):
+        m = Chem.MolFromSmiles(self.smiles)
+        m2=Chem.AddHs(m)
+        AllChem.EmbedMolecule(m2)
+        with open(self.file, 'w') as f:
+            f.write(Chem.MolToXYZBlock(m2, confId=-1))
+        path = str(os.getcwd())
+        path_opt = path+'/opt'
+        os.system('mkdir opt')
+        os.system('mv '+self.file+ ' opt')
+        os.chdir(path_opt)
+        subprocess.run([self.xtb_dir, self.file, '--opt',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
+        os.system(f'mv xtbopt.xyz {path}')
+        os.chdir(path)
+        os.rename('xtbopt.xyz',self.file)
+        os.system('rm -rf opt')
+    @timer
+    def conformer_search(self,gfn=['1','2'],thread=8,sol='h2o'):
+        os.system(f'rm -rf {self.file.split(".")[0]}_conformers')
+        print('Conformer search is started')
+        os.mkdir(f'{self.file.split(".")[0]}_conformers')
+        os.system(f'cp {self.file} md.inp {self.file.split(".")[0]}_conformers')
+        os.chdir(f'{self.file.split(".")[0]}_conformers')
+        os.system(f'{self.xtb_dir} {self.file} --input md.inp --omd --gfn {gfn[0]} --alpb {sol} --T {thread} > md.out')
+        os.rename('xtb.trj','traj.xyz')
+        subprocess.run([self.crest_dir,'--mdopt','traj.xyz',f'--gfn {gfn[1]}',f'--alpb {sol}',f'--T {thread}','--niceprint'],stdout= subprocess.DEVNULL)
+        os.rename('crest_ensemble.xyz',f'{self.file.split(".")[0]}_ensemble.xyz')
+
+
+    def conformer_sorting(self):
+        with open(f'{self.file.split(".")[0]}_sorting.out', 'w') as f:
+            subprocess.run([self.crest_dir, '--cregen', f'{self.file.split(".")[0]}_ensemble.xyz'], stdout=f)
+            os.rename('crest.energies', f'{self.file.split(".")[0]}_energy.txt')
+            os.rename('crest_ensemble.xyz',f'{self.file.split(".")[0]}_ensemble.sorted.xyz')
+            os.system(f'mv {self.file.split(".")[0]}_ensemble.sorted.xyz {self.file.split(".")[0]}_energy.txt  ../')
+            os.chdir('../')
+            # os.system(f'rm -rf {self.file.split(".")[0]}_conformers')
+
+
+
 
 
 
