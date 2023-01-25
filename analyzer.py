@@ -82,7 +82,7 @@ class EDA_analyzer():
         self.gridpoints_filtered.insert(0, 'atom_name', self.probe)
         self.gridpoints_filtered.columns = ['atom_name', 'X', 'Y', 'Z']
 
-    @timer
+    
     def gridpoints_exporter(self,gridpoints):
         gridpoints.columns = ['atom_name','X','Y','Z']
         np.savetxt(self.molecule.split('.')[0]+'_grids.xyz',gridpoints.to_numpy(),fmt='%s')
@@ -153,7 +153,7 @@ class EDA_analyzer():
             gridpoints_v = import_file(self.molecule.split('.')[0]+'_gridpoints_rotations.xyz', columns = ['Particle Type', 'Position.X', 'Position.Y', 'Position.Z']+list(val))
             def modify_pipeline_input(frame: int, data: DataCollection):
                 if len(val) == 0:
-                    data.particles_.particle_types_.type_by_name_(self.probe).radius = 0.15
+                    data.particles_.particle_types_.type_by_name_(self.probe).radius = 0.12
                 else:
                     data.particles_.particle_types_.type_by_name_(self.probe).radius = 0.02
             gridpoints_v.modifiers.append(modify_pipeline_input)
@@ -162,8 +162,8 @@ class EDA_analyzer():
             data_1.cell.vis.enabled = False
             del data_1 # Done accessing input DataCollection of pipeline.
             if len(val) != 0:
-                top = self.gridpoints_nomorlized[eda_val].median() + self.gridpoints_nomorlized[eda_val].std()
-                btm = self.gridpoints_nomorlized[eda_val].median() - self.gridpoints_nomorlized[eda_val].std()
+                top = self.gridpoints_normalized[eda_val].median() + self.gridpoints_normalized[eda_val].std()
+                btm = self.gridpoints_normalized[eda_val].median() - self.gridpoints_normalized[eda_val].std()
                 gridpoints_v.modifiers.append(ColorCodingModifier(
                     property = eda_val,
                     start_value = max(0,btm),
@@ -187,7 +187,7 @@ class EDA_analyzer():
             molecule_v.remove_from_scene()
             gridpoints_v.remove_from_scene()
     @timer
-    def run_lj(self):
+    def run_LJ(self):
         grid_coord = np.loadtxt(self.molecule.split('.')[0]+'_grids.xyz',skiprows=2,usecols=[1,2,3])
         mol_coord = np.loadtxt(self.molecule,skiprows=2,usecols=[1,2,3])
         atom_grid = np.loadtxt(self.molecule.split('.')[0]+'_grids.xyz',dtype='str',skiprows=2,usecols=[0])
@@ -195,21 +195,21 @@ class EDA_analyzer():
         dist_arr = self.dist_filtered.T
         module_dir = os.path.dirname(__file__)
         file_path = os.path.join(module_dir, 'LJ_potentials.csv')  
-        lj_potentials = pd.read_csv(file_path)
-        map_dict = lj_potentials.set_index('Atom').to_dict()['Epsilon']
+        LJ_potentials = pd.read_csv(file_path)
+        map_dict = LJ_potentials.set_index('Atom').to_dict()['Epsilon']
         epsilon_mol = np.array([map_dict.get(i,i) for i in atom_coord])
         epsilon_grid = np.array([map_dict.get(i,i) for i in atom_grid])
         sigma_mol = np.array([map_dict.get(i,i) for i in atom_coord])
         sigma_grid = np.array([map_dict.get(i,i) for i in atom_grid])
         ep_mix = np.sqrt(np.einsum('i,j-> ij', epsilon_mol,epsilon_grid))
         sig_mix = (np.add.outer(sigma_mol,sigma_grid))/2
-        self.gridpoints_lj = 4*ep_mix*(np.power((sig_mix/dist_arr),6) - np.power((sig_mix/dist_arr),12))
-        self.gridpoints_lj = pd.DataFrame(np.einsum('ij->j',self.gridpoints_lj))
-        self.gridpoints_lj.columns = ['LJ_energy']
+        self.gridpoints_LJ = 4*ep_mix*(np.power((sig_mix/dist_arr),6) - np.power((sig_mix/dist_arr),12))
+        self.gridpoints_LJ = pd.DataFrame(np.einsum('ij->j',self.gridpoints_LJ))
+        self.gridpoints_LJ.columns = ['LJ_energy']
         scaler = MinMaxScaler()
-        self.gridpoints_nomorlized_lj =pd.DataFrame(scaler.fit_transform(self.gridpoints_lj['LJ_energy'].to_numpy().reshape(-1,1)))
-        self.gridpoints_nomorlized_lj.columns = ['LJ_energy']
-        self.gridpoints_nomorlized = self.gridpoints_nomorlized_lj
+        self.gridpoints_normalized_LJ =pd.DataFrame(scaler.fit_transform(self.gridpoints_LJ['LJ_energy'].to_numpy().reshape(-1,1)))
+        self.gridpoints_normalized_LJ.columns = ['LJ_energy']
+        self.gridpoints_normalized = self.gridpoints_normalized_LJ
     @timer
     def run_xTB(self,gfn=1,chrg=1):
         xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
@@ -246,14 +246,14 @@ class EDA_analyzer():
         with open('int.txt', 'r') as f:
             lines = f.readlines()
             self.columns =np.array(["_".join((line.split(':')[0]).split()) for line in lines[-11:-1]]).tolist()
-        self.gridpoints_xTB = pd.DataFrame(self.gridpoints_EDA)
+        self.gridpoints_xTB = pd.DataFrame(self.gridpoints_xTB)
         self.gridpoints_xTB.columns = self.columns
         os.chdir(path)
         os.system('rm -rf 1 2 3')
         scaler = MinMaxScaler()
-        self.gridpoints_nomorlized_xTB =pd.DataFrame(scaler.fit_transform(self.gridpoints_EDA[self.columns]))
-        self.gridpoints_nomorlized_xTB.columns = self.columns
-        self.gridpoints_nomorlized = self.gridpoints_nomorlized_xTB
+        self.gridpoints_normalized_xTB =pd.DataFrame(scaler.fit_transform(self.gridpoints_EDA[self.columns]))
+        self.gridpoints_normalized_xTB.columns = self.columns
+        self.gridpoints_normalized = self.gridpoints_normalized_xTB
     @timer
     def run_Turbomole(self):
         x2t_dir = subprocess.run(['which', 'x2t'], stdout=subprocess.PIPE).stdout.decode().strip()
@@ -281,14 +281,9 @@ class EDA_analyzer():
         self.gridpoints_Turbomole = []
         for i in range(len(self.gridpoints_filtered)):
             os.chdir(path_2)
-            np.savetxt('grid.xyz', self.gridpoints_filtered.iloc[i:i + 1].to_numpy(), fmt='%s')
-            with open('grid.xyz', 'r') as f:
-                lines = f.readlines()
-            lines.insert(0, '1\n\n')
-            with open('grid.xyz', 'w') as f:
-                f.writelines(lines)
+            self.gridpoints_exporter(self.gridpoints_filtered.iloc[i:i + 1])
             with open('coord', 'w') as f:
-                subprocess.run([x2t_dir, 'grid.xyz'], stdout=f)
+                subprocess.run([x2t_dir, f'{self.molecule.split(".")[0]}_grids.xyz'], stdout=f)
             os.system(f'{define_dir} < ../def2 > out 2> out1')
             with open('control', 'r') as f:
                 lines = f.readlines()
@@ -298,14 +293,9 @@ class EDA_analyzer():
             os.system(f'{ridft_dir} > out 2> out1')
             os.chdir(path_3)
             combined = pd.concat([self.molecule_coordinates,self.gridpoints_filtered.iloc[i:i + 1]],axis=0)
-            np.savetxt('coord.xyz', combined.to_numpy(), fmt='%s')
-            with open('coord.xyz', 'r') as f:
-                lines = f.readlines()
-            lines.insert(0, f'{len(combined)}\n\n')
-            with open('coord.xyz', 'w') as f:
-                f.writelines(lines)
+            self.gridpoints_exporter(combined)
             with open('coord', 'w') as f:
-                subprocess.run([x2t_dir, 'coord.xyz'], stdout=f)
+                subprocess.run([x2t_dir, f'{self.molecule.split(".")[0]}_grids.xyz'], stdout=f)
             os.system(f'{define_dir} < ../def3 > out 2> out1')
             with open('control', 'r') as f:
                 lines = f.readlines()
@@ -339,6 +329,23 @@ class EDA_analyzer():
         self.gridpoints_Turbomole = pd.DataFrame(self.gridpoints_Turbomole,columns=['Eint_total','Eint_el','Eint_nuc','Eint_1e','Eint_2e','Eint_ex_rp','Eint_ex','Eint_rp','Eint_orb','Eint_cor','Eint_disp'],dtype=float)
         os.chdir(path)
         os.system('rm -rf 1 2 3')
+        return self.gridpoints_Turbomole
+            
+          
+         
+                
+                    
+
+
+
+
+
+
+
+
+
+
+
 
 
 
