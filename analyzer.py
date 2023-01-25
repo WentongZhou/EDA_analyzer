@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import shutil
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from numpy import linspace
@@ -10,13 +11,11 @@ import subprocess
 import multiprocessing
 import concurrent.futures
 import scipy.spatial.transform as sst
-os.environ['OVITO_GUI_MODE'] = '1'
 from ovito.io import *
 from ovito.modifiers import *
 from ovito.data import *
 from ovito.pipeline import *
 from ovito.vis import *
-from ovito.qt_compat import QtCore
 import time
 def timer(func):
     def wrapper(*args, **kwargs):
@@ -227,7 +226,7 @@ class EDA_analyzer():
         os.chdir(path)
         os.system('mkdir 2 3')
         os.system('mv -f ' + path_1 + '/1 ' + path_3)
-        self.gridpoints_EDA = []
+        self.gridpoints_xTB = []
         for self.i,gridpoint in enumerate(self.gridpoints_filtered.to_numpy()):
             os.chdir(path_2)
             with open('gridpoint.xyz','w') as f:
@@ -243,25 +242,107 @@ class EDA_analyzer():
             with open('int.txt', 'r') as f:
                 lines = f.readlines()
                 gridpoint_EDA =np.array([line.split(':')[1] for line in lines[-11:-1]]).astype(float)
-            self.gridpoints_EDA.append(gridpoint_EDA)
+            self.gridpoints_xTB.append(gridpoint_EDA)
         with open('int.txt', 'r') as f:
             lines = f.readlines()
-            columns =np.array(["_".join((line.split(':')[0]).split()) for line in lines[-11:-1]]).tolist()
-        self.gridpoints_EDA = pd.DataFrame(self.gridpoints_EDA)
-        self.gridpoints_EDA.columns = columns
+            self.columns =np.array(["_".join((line.split(':')[0]).split()) for line in lines[-11:-1]]).tolist()
+        self.gridpoints_xTB = pd.DataFrame(self.gridpoints_EDA)
+        self.gridpoints_xTB.columns = self.columns
         os.chdir(path)
         os.system('rm -rf 1 2 3')
         scaler = MinMaxScaler()
-        self.gridpoints_nomorlized_EDA =pd.DataFrame(scaler.fit_transform(self.gridpoints_EDA[self.columns]))
-        self.gridpoints_nomorlized_EDA.columns = self.columns
-        self.gridpoints_nomorlized = self.gridpoints_nomorlized_EDA
+        self.gridpoints_nomorlized_xTB =pd.DataFrame(scaler.fit_transform(self.gridpoints_EDA[self.columns]))
+        self.gridpoints_nomorlized_xTB.columns = self.columns
+        self.gridpoints_nomorlized = self.gridpoints_nomorlized_xTB
     @timer
     def run_Turbomole(self):
-        xtb_dir = subprocess.run(['which', 'xtb'], stdout=subprocess.PIPE).stdout.decode().strip()
+        x2t_dir = subprocess.run(['which', 'x2t'], stdout=subprocess.PIPE).stdout.decode().strip()
+        define_dir = subprocess.run(['which', 'define'], stdout=subprocess.PIPE).stdout.decode().strip()
+        ridft_dir = subprocess.run(['which', 'ridft'], stdout=subprocess.PIPE).stdout.decode().strip()
+        promowa_dir = subprocess.run(['which', 'promowa'], stdout=subprocess.PIPE).stdout.decode().strip()
         path = str(os.getcwd())
         path_1 = path + '/1'
         path_2 = path + '/2'
         path_3 = path + '/3'
+        with open('coord','w') as f:
+            subprocess.run([x2t_dir, self.molecule], stdout=f)
+        os.mkdir('1')
+        os.system('mv -f coord 1')
+        os.chdir(path_1)
+        os.system(f'{define_dir} < ../def1 > out 2> out1')
+        with open('control', 'r') as f:
+            lines = f.readlines()
+            lines.insert(-1, '$scfdenapproxl 0\n')
+        with open('control', 'w') as f:
+            f.writelines(lines)
+        os.system(f'{ridft_dir} > out 2> out1')
+        os.chdir(path)
+        os.system('mkdir 2 3')
+        self.gridpoints_Turbomole = []
+        for i in range(len(self.gridpoints_filtered)):
+            os.chdir(path_2)
+            np.savetxt('grid.xyz', self.gridpoints_filtered.iloc[i:i + 1].to_numpy(), fmt='%s')
+            with open('grid.xyz', 'r') as f:
+                lines = f.readlines()
+            lines.insert(0, '1\n\n')
+            with open('grid.xyz', 'w') as f:
+                f.writelines(lines)
+            with open('coord', 'w') as f:
+                subprocess.run([x2t_dir, 'grid.xyz'], stdout=f)
+            os.system(f'{define_dir} < ../def2 > out 2> out1')
+            with open('control', 'r') as f:
+                lines = f.readlines()
+                lines.insert(-1, '$scfdenapproxl 0\n')
+            with open('control', 'w') as f:
+                f.writelines(lines)
+            os.system(f'{ridft_dir} > out 2> out1')
+            os.chdir(path_3)
+            combined = pd.concat([self.molecule_coordinates,self.gridpoints_filtered.iloc[i:i + 1]],axis=0)
+            np.savetxt('coord.xyz', combined.to_numpy(), fmt='%s')
+            with open('coord.xyz', 'r') as f:
+                lines = f.readlines()
+            lines.insert(0, f'{len(combined)}\n\n')
+            with open('coord.xyz', 'w') as f:
+                f.writelines(lines)
+            with open('coord', 'w') as f:
+                subprocess.run([x2t_dir, 'coord.xyz'], stdout=f)
+            os.system(f'{define_dir} < ../def3 > out 2> out1')
+            with open('control', 'r') as f:
+                lines = f.readlines()
+                con1 = path_1 + '/control'
+                con2 = path_2 + '/control'
+                if i == 0:
+                    lines.insert(-6, '$scfdenapproxl 0\n')
+                    lines.insert(-6, '$subsystems\n')
+                    lines.insert(-6, f'molecule#1 file={con1}\n')
+                    lines.insert(-6, f'molecule#2 file={con2}\n')
+            with open('control', 'w') as f:
+                f.writelines(lines)
+            subprocess.run([promowa_dir], stdout=subprocess.PIPE)
+            with open('ridft.out','w') as f:
+                result = subprocess.run([ridft_dir], stdout=f,stderr=subprocess.PIPE)
+            if 'normally' in result.stderr.decode():
+                    with open('ridft.out', 'r') as f:
+                        lines = f.readlines()
+                    with open('ridft.out', 'r') as f:
+                        for index, line in enumerate(f):
+                            if line.find('Total Interaction energy') != -1:
+                                values = [line.split(' ')[-3] for line in lines[index:index+12]]
+                                del values[1]
+            else:
+                values = ['0']*10
+            self.gridpoints_Turbomole.append(values)
+            with open('energies_Turbomole.out','a') as f:
+                f.writelines(values)
+                f.write('\n')
+        os.system(f'mv -f energies_Turbomole.out ../{self.molecule.split(".")[0]}_Turbomole_Energies.out')
+        self.gridpoints_Turbomole = pd.DataFrame(self.gridpoints_Turbomole,columns=['Eint_total','Eint_el','Eint_nuc','Eint_1e','Eint_2e','Eint_ex_rp','Eint_ex','Eint_rp','Eint_orb','Eint_cor','Eint_disp'],dtype=float)
+        os.chdir(path)
+        os.system('rm -rf 1 2 3')
+
+
+
+
     def xyz_exporter(self,axis,animation_speed,*val,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):
         self.gridpoints_visualizer(axis, animation_speed,0, 5, vp, [False,False,(1, 2),False], *val)
     @timer
@@ -282,7 +363,7 @@ class SmilesToXYZ():
         self.xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
         self.file = file
         self.__call__()
-        self.crest_dir = subprocess.run(['which', 'crest3'], stdout=subprocess.PIPE).stdout.decode().strip()
+        self.crest_dir = subprocess.run(['which', 'crest'], stdout=subprocess.PIPE).stdout.decode().strip()
         if conformer_search == True:
             self.conformer_search()
             self.conformer_sorting()
@@ -313,14 +394,13 @@ class SmilesToXYZ():
         os.rename('xtb.trj','traj.xyz')
         subprocess.run([self.crest_dir,'--mdopt','traj.xyz',f'--gfn {gfn[1]}',f'--alpb {sol}',f'--T {thread}','--niceprint'],stdout= subprocess.DEVNULL)
         os.rename('crest_ensemble.xyz',f'{self.file.split(".")[0]}_ensemble.xyz')
-
-
     def conformer_sorting(self):
         with open(f'{self.file.split(".")[0]}_sorting.out', 'w') as f:
             subprocess.run([self.crest_dir, '--cregen', f'{self.file.split(".")[0]}_ensemble.xyz'], stdout=f)
             os.rename('crest.energies', f'{self.file.split(".")[0]}_energy.txt')
             os.rename('crest_ensemble.xyz',f'{self.file.split(".")[0]}_ensemble.sorted.xyz')
-            os.system(f'mv {self.file.split(".")[0]}_ensemble.sorted.xyz {self.file.split(".")[0]}_energy.txt  ../')
+            os.rename('crest_best.xyz',f'{self.file.split(".")[0]}_best.xyz')
+            os.system(f'mv {self.file.split(".")[0]}_ensemble.sorted.xyz {self.file.split(".")[0]}_energy.txt {self.file.split(".")[0]}_best.xyz  ../')
             os.chdir('../')
             # os.system(f'rm -rf {self.file.split(".")[0]}_conformers')
 
