@@ -11,6 +11,8 @@ import subprocess
 import multiprocessing
 import concurrent.futures
 import scipy.spatial.transform as sst
+import ipywidgets
+os.environ['OVITO_GUI_MODE'] = '1'
 from ovito.io import *
 from ovito.modifiers import *
 from ovito.data import *
@@ -109,7 +111,7 @@ class EDA_analyzer():
                 rotation_matrix = sst.Rotation.from_rotvec(np.array([0, 0, angle])).as_matrix()
                 rotated = np.dot(reset,rotation_matrix)
                 if len(val) != 0:
-                    rotated = np.column_stack((rotated,self.gridpoints_nomorlized[list(val)].to_numpy()))
+                    rotated = np.column_stack((rotated,self.gridpoints_normalized[list(val)].to_numpy()))
                     rotated_coordinates.append(rotated)
                 else:
                     rotated_coordinates.append(rotated)
@@ -184,6 +186,8 @@ class EDA_analyzer():
             else:
                 mol = self.molecule.split('.')[0]
                 vp.render_image(size=ovito[2], frame=frame, filename=f'{mol}_{frame}_gridpoints.png')
+                widget = vp.create_jupyter_widget(layout = ipywidgets.Layout(width='2000px', height='500px'))
+                display(widget)
             molecule_v.remove_from_scene()
             gridpoints_v.remove_from_scene()
     @timer
@@ -251,7 +255,7 @@ class EDA_analyzer():
         os.chdir(path)
         os.system('rm -rf 1 2 3')
         scaler = MinMaxScaler()
-        self.gridpoints_normalized_xTB =pd.DataFrame(scaler.fit_transform(self.gridpoints_EDA[self.columns]))
+        self.gridpoints_normalized_xTB =pd.DataFrame(scaler.fit_transform(self.gridpoints_xTB[self.columns]))
         self.gridpoints_normalized_xTB.columns = self.columns
         self.gridpoints_normalized = self.gridpoints_normalized_xTB
     @timer
