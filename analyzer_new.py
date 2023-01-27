@@ -1,6 +1,11 @@
 import numpy as np
 import pandas as pd
 import shutil
+from tabulate import tabulate
+import subprocess
+import select
+import glob
+import re
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from numpy import linspace
@@ -214,127 +219,71 @@ class EDA_analyzer():
         self.gridpoints_normalized_LJ =pd.DataFrame(scaler.fit_transform(self.gridpoints_LJ['LJ_energy'].to_numpy().reshape(-1,1)))
         self.gridpoints_normalized_LJ.columns = ['LJ_energy']
         self.gridpoints_normalized = self.gridpoints_normalized_LJ
-    @timer
-    def run_xTB(self,gfn=1,chrg=1):
-        xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
-        xtbiff_dir = subprocess.run(['which','xtbiff'],stdout=subprocess.PIPE).stdout.decode().strip()
-        path = str(os.getcwd())
-        path_1 = path + '/1'
-        path_2 = path + '/2'
-        path_3 = path + '/3'
-        os.system('mkdir 1')
-        os.system('cp '+self.molecule+ ' 1')
-        os.chdir(path_1)
-        subprocess.run([xtb_dir, self.molecule, '--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
-        os.rename('xtblmoinfo','1')
-        os.chdir(path)
-        os.system('mkdir 2 3')
-        os.system('mv -f ' + path_1 + '/1 ' + path_3)
-        self.gridpoints_xTB = []
-        for self.i,gridpoint in enumerate(self.gridpoints_filtered.to_numpy()):
-            os.chdir(path_2)
-            with open('gridpoint.xyz','w') as f:
-                f.write('1')
-                f.write('\n\n')
-                np.savetxt(f,self.gridpoints_filtered.iloc[self.i:self.i+1].to_numpy(),fmt='%s')
-            subprocess.run([xtb_dir, 'gridpoint.xyz',f'--chrg {chrg}' ,'--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
-            os.rename('xtblmoinfo','2')
-            os.system('mv -f '+'2 '+ path_3)
-            os.chdir(path_3)
-            with open('int.txt','w') as f:
-                subprocess.run([xtbiff_dir, '1','2' ,'-sp'],stdout=f)
-            with open('int.txt', 'r') as f:
-                lines = f.readlines()
-                gridpoint_EDA =np.array([line.split(':')[1] for line in lines[-11:-1]]).astype(float)
-            self.gridpoints_xTB.append(gridpoint_EDA)
-        with open('int.txt', 'r') as f:
-            lines = f.readlines()
-            self.columns =np.array(["_".join((line.split(':')[0]).split()) for line in lines[-11:-1]]).tolist()
-        self.gridpoints_xTB = pd.DataFrame(self.gridpoints_xTB)
-        self.gridpoints_xTB.columns = self.columns
-        os.chdir(path)
-        os.system('rm -rf 1 2 3')
-        scaler = MinMaxScaler()
-        self.gridpoints_normalized_xTB =pd.DataFrame(scaler.fit_transform(self.gridpoints_xTB[self.columns]))
-        self.gridpoints_normalized_xTB.columns = self.columns
-        self.gridpoints_normalized = self.gridpoints_normalized_xTB
-    @timer
-    def run_Turbomole(self):
-        x2t_dir = subprocess.run(['which', 'x2t'], stdout=subprocess.PIPE).stdout.decode().strip()
-        define_dir = subprocess.run(['which', 'define'], stdout=subprocess.PIPE).stdout.decode().strip()
-        ridft_dir = subprocess.run(['which', 'ridft'], stdout=subprocess.PIPE).stdout.decode().strip()
-        promowa_dir = subprocess.run(['which', 'promowa'], stdout=subprocess.PIPE).stdout.decode().strip()
-        path = str(os.getcwd())
-        path_1 = path + '/1'
-        path_2 = path + '/2'
-        path_3 = path + '/3'
-        with open('coord','w') as f:
-            subprocess.run([x2t_dir, self.molecule], stdout=f)
-        os.mkdir('1')
-        os.system('mv -f coord 1')
-        os.chdir(path_1)
-        os.system(f'{define_dir} < ../def1 > out 2> out1')
-        with open('control', 'r') as f:
-            lines = f.readlines()
-            lines.insert(-1, '$scfdenapproxl 0\n')
-        with open('control', 'w') as f:
-            f.writelines(lines)
-        os.system(f'{ridft_dir} > out 2> out1')
-        os.chdir(path)
-        os.system('mkdir 2 3')
-        self.gridpoints_Turbomole = []
-        for i in range(len(self.gridpoints_filtered)):
-            os.chdir(path_2)
-            self.gridpoints_exporter(self.gridpoints_filtered.iloc[i:i + 1])
-            with open('coord', 'w') as f:
-                subprocess.run([x2t_dir, f'{self.molecule.split(".")[0]}_grids.xyz'], stdout=f)
-            os.system(f'{define_dir} < ../def2 > out 2> out1')
-            with open('control', 'r') as f:
-                lines = f.readlines()
-                lines.insert(-1, '$scfdenapproxl 0\n')
-            with open('control', 'w') as f:
-                f.writelines(lines)
-            os.system(f'{ridft_dir} > out 2> out1')
-            os.chdir(path_3)
-            combined = pd.concat([self.molecule_coordinates,self.gridpoints_filtered.iloc[i:i + 1]],axis=0)
-            self.gridpoints_exporter(combined)
-            with open('coord', 'w') as f:
-                subprocess.run([x2t_dir, f'{self.molecule.split(".")[0]}_grids.xyz'], stdout=f)
-            os.system(f'{define_dir} < ../def3 > out 2> out1')
-            with open('control', 'r') as f:
-                lines = f.readlines()
-                con1 = path_1 + '/control'
-                con2 = path_2 + '/control'
-                if i == 0:
-                    lines.insert(-6, '$scfdenapproxl 0\n')
-                    lines.insert(-6, '$subsystems\n')
-                    lines.insert(-6, f'molecule#1 file={con1}\n')
-                    lines.insert(-6, f'molecule#2 file={con2}\n')
-            with open('control', 'w') as f:
-                f.writelines(lines)
-            subprocess.run([promowa_dir], stdout=subprocess.PIPE)
-            with open('ridft.out','w') as f:
-                result = subprocess.run([ridft_dir], stdout=f,stderr=subprocess.PIPE)
-            if 'normally' in result.stderr.decode():
-                    with open('ridft.out', 'r') as f:
-                        lines = f.readlines()
-                    with open('ridft.out', 'r') as f:
-                        for index, line in enumerate(f):
-                            if line.find('Total Interaction energy') != -1:
-                                values = [line.split(' ')[-3] for line in lines[index:index+12]]
-                                del values[1]
-            else:
-                values = ['0']*10
-            self.gridpoints_Turbomole.append(values)
-            with open('energies_Turbomole.out','a') as f:
-                f.writelines(values)
-                f.write('\n')
-        os.system(f'mv -f energies_Turbomole.out ../{self.molecule.split(".")[0]}_Turbomole_Energies.out')
-        self.gridpoints_Turbomole = pd.DataFrame(self.gridpoints_Turbomole,columns=['Eint_total','Eint_el','Eint_nuc','Eint_1e','Eint_2e','Eint_ex_rp','Eint_ex','Eint_rp','Eint_orb','Eint_cor','Eint_disp'],dtype=float)
-        os.chdir(path)
-        os.system('rm -rf 1 2 3')
-        return self.gridpoints_Turbomole
-            
+
+    def run_Command(self):
+        def get_paths():
+            working_directory = os.getcwd()
+            path_1 = working_directory + '/1'
+            path_2 = working_directory + '/2'
+            path_3 = working_directory + '/3'
+            return working_directory, path_1, path_2, path_3
+
+        def r(command_list, file, group_name):
+            with open(file, "r") as file_i:
+                command_list[group_name].extend(file_i.readlines())
+                return command_list
+        def command_merger(command_list):
+            commands = [command for group in command_list.values() for command in group]
+            return commands
+
+        def run_commands(commands, timeout=0.1, log=False, output_file="output.txt", ):
+            output_list = []
+            process = subprocess.Popen(["bash"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       universal_newlines=True)
+            for i, command in enumerate(commands):
+                process.stdin.write(f"{command}\n")
+                process.stdin.flush()
+                rlist, _, _ = select.select([process.stdout, process.stderr], [], [], timeout)
+                for r in rlist:
+                    if r is process.stdout:
+                        print(r)
+                        output = process.stdout.readline()
+                        output_list.append(["Command " + str(i + 1), command, "stdout", output])
+                    else:
+                        error = process.stderr.readline()
+                        output_list.append(["Command " + str(i + 1), command, "stderr", error])
+            stdout, stderr = process.communicate()
+            headers = ["Command Number", "Command", "Output Type", "Output"]
+            if log is True:
+                # Open a file to write the output
+                f = open(output_file, "w")
+                # write the tabular to the file
+                f.write(tabulate(output_list, headers, tablefmt="fancy_grid"))
+                # close the file
+                f.close()
+
+            def output_parser(file_name: str, error_file: str) -> pd.DataFrame:
+                energy_types = ['Total Interaction energy', 'Electrostatic Interaction', 'Nuc---Nuc', '1-electron',
+                                '2-electron', 'Exchange-Repulsion', 'Exchange Int.', 'Repulsion', 'Orbital Relaxation',
+                                'Correlation Interaction', 'Dispersion Interaction']
+                energy_values = {energy_type: 0 for energy_type in energy_types}
+
+                if os.path.isfile(error_file):
+                    df = pd.DataFrame(energy_values, index=["0"])
+                    return df
+                else:
+                    with open(file_name, 'r') as f:
+                        lines = f.read()
+                        energy_types_re = "|".join(energy_types)
+                        matches = re.finditer(energy_types_re, lines)
+                        for match in matches:
+                            energy_type = match.group()
+                            match = re.search(r'-?\d+\.\d+', lines[match.start():])
+                            if match:
+                                energy_values[energy_type] = match.group()
+
+                    df = pd.DataFrame(energy_values, index=["0"])
+                    return df
           
          
                 
@@ -369,14 +318,15 @@ class EDA_analyzer():
 
 
 class SmilesToXYZ():
-    def __init__(self,smiles,file,conformer_search=False):
+    def __init__(self,smiles,file,conformer_search=False,sol='h20'):
         self.smiles = smiles
         self.xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
         self.file = file
+        self.sol = sol
         self.__call__()
         self.crest_dir = subprocess.run(['which', 'crest'], stdout=subprocess.PIPE).stdout.decode().strip()
         if conformer_search == True:
-            self.conformer_search()
+            self.conformer_search(self.sol)
             self.conformer_sorting()
     def __call__(self,gfn=2):
         m = Chem.MolFromSmiles(self.smiles)
