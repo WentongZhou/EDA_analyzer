@@ -274,7 +274,7 @@ class EDA_analyzer():
                 df = pd.DataFrame(output_values, index=["0"])
                 return df
 
-        working_directory, path_1, path_2, path_3 = get_paths()
+        working_directory, path_1, path_2, path_3 = self.get_paths()
         run_commands(frag_A)
         eda_energy_df = pd.DataFrame()
         print('---------------------EDA INITIATED---------------------')
@@ -310,8 +310,6 @@ class EDA_analyzer():
 
 
 
-
-    def run_Turbomole(self):
 
           
          
