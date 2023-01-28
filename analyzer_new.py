@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import shutil
 from tabulate import tabulate
-import subprocess
 import select
 import glob
 import re
@@ -13,8 +12,6 @@ from scipy.spatial import distance
 from sklearn.preprocessing import MinMaxScaler
 import os
 import subprocess
-import multiprocessing
-import concurrent.futures
 import scipy.spatial.transform as sst
 import ipywidgets
 os.environ['OVITO_GUI_MODE'] = '1'
@@ -220,70 +217,102 @@ class EDA_analyzer():
         self.gridpoints_normalized_LJ.columns = ['LJ_energy']
         self.gridpoints_normalized = self.gridpoints_normalized_LJ
 
-    def run_Command(self):
-        def get_paths():
-            working_directory = os.getcwd()
-            path_1 = working_directory + '/1'
-            path_2 = working_directory + '/2'
-            path_3 = working_directory + '/3'
-            return working_directory, path_1, path_2, path_3
+    def get_paths(self,*args):
+        working_directory = os.getcwd()
+        for arg in args:
+            locals()[f'path_{arg}'] = os.path.join(working_directory, arg)
+            return locals()[f'path_{arg}']
+        return working_directory
 
-        def r(command_list, file, group_name):
-            with open(file, "r") as file_i:
-                command_list[group_name].extend(file_i.readlines())
+    def run_Jobs(self,frag_A,frag_B,Supramolecule,output_name,output_types,headers):
+
+        def file_to_command(command_list, file, group_name):
+            with open(file, "r") as f:
+                command_list[group_name].extend(f.readlines())
                 return command_list
-        def command_merger(command_list):
-            commands = [command for group in command_list.values() for command in group]
-            return commands
 
-        def run_commands(commands, timeout=0.1, log=False, output_file="output.txt", ):
+        def run_commands(commands, timeout=0, log=False):
             output_list = []
             process = subprocess.Popen(["bash"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                        universal_newlines=True)
             for i, command in enumerate(commands):
                 process.stdin.write(f"{command}\n")
                 process.stdin.flush()
-                rlist, _, _ = select.select([process.stdout, process.stderr], [], [], timeout)
-                for r in rlist:
-                    if r is process.stdout:
-                        print(r)
-                        output = process.stdout.readline()
-                        output_list.append(["Command " + str(i + 1), command, "stdout", output])
-                    else:
-                        error = process.stderr.readline()
-                        output_list.append(["Command " + str(i + 1), command, "stderr", error])
+                if log == True:
+                    rlist, _, _ = select.select([process.stdout, process.stderr], [], [], timeout)
+                    for r in rlist:
+                        if r is process.stdout:
+                            print(r)
+                            output = process.stdout.readline()
+                            output_list.append(["Command " + str(i + 1), command, "stdout", output])
+                        else:
+                            error = process.stderr.readline()
+                            output_list.append(["Command " + str(i + 1), command, "stderr", error])
             stdout, stderr = process.communicate()
             headers = ["Command Number", "Command", "Output Type", "Output"]
-            if log is True:
-                # Open a file to write the output
-                f = open(output_file, "w")
-                # write the tabular to the file
-                f.write(tabulate(output_list, headers, tablefmt="fancy_grid"))
-                # close the file
-                f.close()
+            if log == True:
+                with open('output.txt', "w") as f:
+                    f.write(tabulate(output_list, headers, tablefmt="fancy_grid"))
 
-            def output_parser(file_name: str, error_file: str) -> pd.DataFrame:
-                energy_types = ['Total Interaction energy', 'Electrostatic Interaction', 'Nuc---Nuc', '1-electron',
-                                '2-electron', 'Exchange-Repulsion', 'Exchange Int.', 'Repulsion', 'Orbital Relaxation',
-                                'Correlation Interaction', 'Dispersion Interaction']
-                energy_values = {energy_type: 0 for energy_type in energy_types}
+        #output_tpyes will be a list containing any thing you want to extract from the output file
+        def output_parser(file_name: str, error_file: str, output_types: list) -> pd.DataFrame:
+            output_values = {output_type: 0 for output_type in output_types}
+            if os.path.isfile(error_file):
+                df = pd.DataFrame(output_values, index=["0"])
+                return df
+            else:
+                with open(file_name, 'r') as f:
+                    lines = f.read()
+                    output_types_re = "|".join(output_types)
+                    matches = re.finditer(output_types_re, lines)
+                    for match in matches:
+                        output_type = match.group()
+                        match = re.search(r'-?\d+\.\d+', lines[match.start():])
+                        if match:
+                            output_values[output_type] = match.group()
 
-                if os.path.isfile(error_file):
-                    df = pd.DataFrame(energy_values, index=["0"])
-                    return df
-                else:
-                    with open(file_name, 'r') as f:
-                        lines = f.read()
-                        energy_types_re = "|".join(energy_types)
-                        matches = re.finditer(energy_types_re, lines)
-                        for match in matches:
-                            energy_type = match.group()
-                            match = re.search(r'-?\d+\.\d+', lines[match.start():])
-                            if match:
-                                energy_values[energy_type] = match.group()
+                df = pd.DataFrame(output_values, index=["0"])
+                return df
 
-                    df = pd.DataFrame(energy_values, index=["0"])
-                    return df
+        working_directory, path_1, path_2, path_3 = get_paths()
+        run_commands(frag_A)
+        eda_energy_df = pd.DataFrame()
+        print('---------------------EDA INITIATED---------------------')
+        for i, gridpoint in enumerate(self.gridpoints_filtered.to_numpy()):
+            os.chdir(path_2)
+            with open('coord.xyz', 'w') as f:
+                f.write('1')
+                f.write('\n\n')
+                np.savetxt(f, self.gridpoints_filtered.iloc[i:i + 1].to_numpy(), fmt='%s')
+            run_commands(frag_B)
+            os.chdir(path_3)
+            with open('coord.xyz', 'w') as f:
+                f.write(f'{len(self.molecule_coordinates)+1}')
+                f.write('\n\n')
+                combined_coordinates = np.concatenate((self.molecule_coordinates, self.gridpoints_filtered.iloc[i:i + 1].to_numpy()), axis=0)
+                np.savetxt(f, combined_coordinates, fmt='%s')
+            run_commands(Supramolecule)
+            df = output_parser(output_name, 'dscf_problem',output_types)
+            df["grid_index"] = i
+            df.set_index("grid_index", inplace=True)
+            eda_energy_df = pd.concat([eda_energy_df, df], ignore_index=False)
+            os.chdir(str(working_directory))
+            with open("energy_values.md", "w") as f:
+                f.write(tabulate(eda_energy_df,
+                                 headers=headers,
+                                 tablefmt="simple", floatfmt=".6f",
+                                 colalign=(
+                                 "center", "center", "center", "center", "center", "center", "center", "center",
+                                 "center", "center", "center", "center")))
+            os.system('rm -r 2 3')
+            os.system('mkdir 2 3')
+        print('---------------------EDA COMPLETED---------------------')
+
+
+
+
+    def run_Turbomole(self):
+
           
          
                 
