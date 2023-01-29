@@ -1,10 +1,8 @@
 import numpy as np
 import pandas as pd
-import shutil
 from tabulate import tabulate
-import select
-import glob
 import re
+from util import *
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from numpy import linspace
@@ -30,6 +28,24 @@ def timer(func):
         print(f"{func.__name__} elapsed time: {elapsed_time} seconds")
         return result
     return wrapper
+
+def output_parser(file_name: str, error_file: str, output_types: list) -> pd.DataFrame:
+    output_values = {output_type: 0 for output_type in output_types}
+    if os.path.isfile(error_file):
+        df = pd.DataFrame(output_values, index=["0"])
+        return df
+    else:
+        with open(file_name, 'r') as f:
+            lines = f.read()
+            output_types_re = "|".join(output_types)
+            matches = re.finditer(output_types_re, lines)
+            for match in matches:
+                output_type = match.group()
+                match = re.search(r'-?\d+\.\d+', lines[match.start():])
+                if match:
+                    output_values[output_type] = match.group()
+        df = pd.DataFrame(output_values, index=["0"])
+        return df
 class EDA_analyzer():
     def __init__(self,molecule,probe='Li',boundary=10,grid_spacing=1,sieve=5,cavity_thres=3):
         self.molecule = molecule
@@ -86,7 +102,6 @@ class EDA_analyzer():
         self.gridpoints_filtered.insert(0, 'atom_name', self.probe)
         self.gridpoints_filtered.columns = ['atom_name', 'X', 'Y', 'Z']
 
-    
     def gridpoints_exporter(self,gridpoints):
         gridpoints.columns = ['atom_name','X','Y','Z']
         np.savetxt(self.molecule.split('.')[0]+'_grids.xyz',gridpoints.to_numpy(),fmt='%s')
@@ -217,96 +232,33 @@ class EDA_analyzer():
         self.gridpoints_normalized_LJ.columns = ['LJ_energy']
         self.gridpoints_normalized = self.gridpoints_normalized_LJ
 
-    def get_paths(self,*args):
-        working_directory = os.getcwd()
-        for arg in args:
-            locals()[f'path_{arg}'] = os.path.join(working_directory, arg)
-            return locals()[f'path_{arg}']
-        return working_directory
 
-    def run_Jobs(self,frag_A,frag_B,Supramolecule,output_name,output_types,headers):
-
-        def file_to_command(command_list, file, group_name):
-            with open(file, "r") as f:
-                command_list[group_name].extend(f.readlines())
-                return command_list
-
-        def run_commands(commands, timeout=0, log=False):
-            output_list = []
-            process = subprocess.Popen(["bash"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                       universal_newlines=True)
-            for i, command in enumerate(commands):
-                process.stdin.write(f"{command}\n")
-                process.stdin.flush()
-                if log == True:
-                    rlist, _, _ = select.select([process.stdout, process.stderr], [], [], timeout)
-                    for r in rlist:
-                        if r is process.stdout:
-                            print(r)
-                            output = process.stdout.readline()
-                            output_list.append(["Command " + str(i + 1), command, "stdout", output])
-                        else:
-                            error = process.stderr.readline()
-                            output_list.append(["Command " + str(i + 1), command, "stderr", error])
-            stdout, stderr = process.communicate()
-            headers = ["Command Number", "Command", "Output Type", "Output"]
-            if log == True:
-                with open('output.txt', "w") as f:
-                    f.write(tabulate(output_list, headers, tablefmt="fancy_grid"))
-
-        #output_tpyes will be a list containing any thing you want to extract from the output file
-        def output_parser(file_name: str, error_file: str, output_types: list) -> pd.DataFrame:
-            output_values = {output_type: 0 for output_type in output_types}
-            if os.path.isfile(error_file):
-                df = pd.DataFrame(output_values, index=["0"])
-                return df
-            else:
-                with open(file_name, 'r') as f:
-                    lines = f.read()
-                    output_types_re = "|".join(output_types)
-                    matches = re.finditer(output_types_re, lines)
-                    for match in matches:
-                        output_type = match.group()
-                        match = re.search(r'-?\d+\.\d+', lines[match.start():])
-                        if match:
-                            output_values[output_type] = match.group()
-
-                df = pd.DataFrame(output_values, index=["0"])
-                return df
-
-        working_directory, path_1, path_2, path_3 = self.get_paths()
+    def run_Jobs(self,name,frag_A,frag_B,Supramolecule,output_name,output_types,headers):
+        host_directory, working_directory, path_1, path_2, path_3 = self.get_paths(name)
+        os.chdir(path_1)
+        xyz_generator(f'{len(self.molecule_coordinates) + 1}', self.molecule_coordinates.to_numpy())
         run_commands(frag_A)
         eda_energy_df = pd.DataFrame()
         print('---------------------EDA INITIATED---------------------')
         for i, gridpoint in enumerate(self.gridpoints_filtered.to_numpy()):
             os.chdir(path_2)
-            with open('coord.xyz', 'w') as f:
-                f.write('1')
-                f.write('\n\n')
-                np.savetxt(f, self.gridpoints_filtered.iloc[i:i + 1].to_numpy(), fmt='%s')
+            xyz_generator('1',gridpoint.to_numpy())
             run_commands(frag_B)
             os.chdir(path_3)
-            with open('coord.xyz', 'w') as f:
-                f.write(f'{len(self.molecule_coordinates)+1}')
-                f.write('\n\n')
-                combined_coordinates = np.concatenate((self.molecule_coordinates, self.gridpoints_filtered.iloc[i:i + 1].to_numpy()), axis=0)
-                np.savetxt(f, combined_coordinates, fmt='%s')
+            combined_coordinates = np.concatenate((self.molecule_coordinates.to_numpy(), gridpoint.to_numpy()), axis=0)
+            xyz_generator(f'{len(self.molecule_coordinates)+1}',combined_coordinates)
             run_commands(Supramolecule)
-            df = output_parser(output_name, 'dscf_problem',output_types)
+            df = output_parser(output_name,'dscf_problem',output_types)
             df["grid_index"] = i
             df.set_index("grid_index", inplace=True)
             eda_energy_df = pd.concat([eda_energy_df, df], ignore_index=False)
-            os.chdir(str(working_directory))
-            with open("energy_values.md", "w") as f:
-                f.write(tabulate(eda_energy_df,
-                                 headers=headers,
-                                 tablefmt="simple", floatfmt=".6f",
-                                 colalign=(
-                                 "center", "center", "center", "center", "center", "center", "center", "center",
-                                 "center", "center", "center", "center")))
-            os.system('rm -r 2 3')
-            os.system('mkdir 2 3')
-        print('---------------------EDA COMPLETED---------------------')
+            os.chdir(str(host_directory))
+            with open("energy_values.out", "w") as f:
+                f.write(tabulate(eda_energy_df,headers=headers,tablefmt="simple", floatfmt=".6f",colalign=("center"*len(headers))))
+            os.system("rm -r f'{path_2}' f'{path_3}'")
+            os.system("mkdir f'{path_2}' f'{path_3}'")
+        os.chdir(str(host_directory))
+
 
 
 
