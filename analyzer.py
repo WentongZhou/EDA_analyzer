@@ -65,9 +65,12 @@ class EDA_analyzer():
         y = linspace(self.origin[1] - length/2, self.origin[1] + length/2, int(length/spacing) + 1)
         z = linspace(self.origin[2] - length/2, self.origin[2] + length/2, int(length/spacing) + 1)
         self.X, self.Y, self.Z = np.meshgrid(x, y, z)
+        #the numpy array of gridpoints will have 6 decimals
         grid = np.stack((self.X, self.Y, self.Z), axis=-1)
+        grid = np.around(grid, decimals=6)
         self.gridpoints_coordinate = pd.DataFrame(np.reshape(grid, (-1, 3)))
         self.gridpoints_coordinate.insert(0,'atom_name',self.probe)
+        self.gridpoints_coordinate.columns = ['atom_name', 'X', 'Y', 'Z']
     @timer
     def gridpoints_filter(self):
         gridpoints = self.gridpoints_coordinate.iloc[:,1:4].to_numpy(dtype=float)
@@ -84,7 +87,7 @@ class EDA_analyzer():
         self.gridpoints_filtered.insert(0, 'atom_name', self.probe)
         self.gridpoints_filtered.columns = ['atom_name', 'X', 'Y', 'Z']
 
-    
+
     def gridpoints_exporter(self,gridpoints):
         gridpoints.columns = ['atom_name','X','Y','Z']
         np.savetxt(self.molecule.split('.')[0]+'_grids.xyz',gridpoints.to_numpy(),fmt='%s')
