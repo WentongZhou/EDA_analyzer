@@ -70,6 +70,7 @@ class EDA_analyzer():
         self.gridpoints_coordinate = pd.DataFrame(np.reshape(grid, (-1, 3)))
         self.gridpoints_coordinate.insert(0,'atom_name',self.probe)
         self.gridpoints_coordinate.columns = ['atom_name', 'X', 'Y', 'Z']
+        self.gridpoints_coordinate.sort_values(by=['X', 'Y', 'Z'], ascending=[True, True, True], inplace=True, ignore_index=True)
     @timer
     def gridpoints_filter(self):
         gridpoints = self.gridpoints_coordinate.iloc[:,1:4].to_numpy(dtype=float)
