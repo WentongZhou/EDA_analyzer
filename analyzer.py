@@ -18,6 +18,7 @@ from ovito.modifiers import *
 from ovito.data import *
 from ovito.pipeline import *
 from ovito.vis import *
+from tabulate import tabulate
 import time
 def timer(func):
     def wrapper(*args, **kwargs):
@@ -75,6 +76,10 @@ class EDA_analyzer():
         self.dist = distance.cdist(gridpoints, molecule, metric='euclidean')
         gridpoints_coordinate = self.gridpoints_coordinate.iloc[:,1:4].to_numpy()
         filtered_index = np.where(np.all((self.dist >= self.cavity_thres) , axis=1))[0]
+        cavity_index = np.where(np.any((self.dist < self.cavity_thres) , axis=1))[0]
+        self.gridpoints_cavity = pd.DataFrame(gridpoints_coordinate[cavity_index])
+        self.gridpoints_cavity.insert(0, 'atom_name', self.probe)
+        self.gridpoints_cavity.columns = ['atom_name', 'X', 'Y', 'Z']
         self.gridpoints_filtered_1 = gridpoints_coordinate[filtered_index]
         self.dist_filtered_1 = distance.cdist(self.gridpoints_filtered_1, molecule, metric='euclidean')
         dist_filtered_min_1 = np.amin(self.dist_filtered_1, axis=1)
@@ -83,16 +88,12 @@ class EDA_analyzer():
         self.dist_filtered = distance.cdist(self.gridpoints_filtered, molecule, metric='euclidean')
         self.gridpoints_filtered.insert(0, 'atom_name', self.probe)
         self.gridpoints_filtered.columns = ['atom_name', 'X', 'Y', 'Z']
-
     
-    def gridpoints_exporter(self,gridpoints):
-        gridpoints.columns = ['atom_name','X','Y','Z']
-        np.savetxt(self.molecule.split('.')[0]+'_grids.xyz',gridpoints.to_numpy(),fmt='%s')
-        with open(self.molecule.split('.')[0]+'_grids.xyz', 'r') as file:
-            contents = file.read()
-        contents = str(len(gridpoints))+'\n\n' + contents
-        with open(self.molecule.split('.')[0]+'_grids.xyz', 'w') as file:
-            file.write(contents)
+    def gridpoints_exporter(self,gridpoints,name='grids'):
+        with open(f'{self.molecule.split(".")[0]}_{name}.xyz','w') as f:
+            f.write(str(len(gridpoints)))
+            f.write('\n\n')
+            np.savetxt(f,gridpoints.to_numpy(),fmt='%s')
     def gridpoints_visualizer(self,axis,animation_speed,frame,fps,viewpoint,ovito=[False,False,(600,500),False],*val,eda_val='Eint_total,gas'):
         molecule = self.molecule_coordinates
         gridpoints = self.gridpoints_filtered
@@ -258,6 +259,8 @@ class EDA_analyzer():
         self.gridpoints_normalized_xTB =pd.DataFrame(scaler.fit_transform(self.gridpoints_xTB[self.columns]))
         self.gridpoints_normalized_xTB.columns = self.columns
         self.gridpoints_normalized = self.gridpoints_normalized_xTB
+        with open(f"{self.molecule.split('.')[0]}_xTB_energy_values.md", "w") as f:
+            f.write(tabulate(self.gridpoints_normalized_xTB, headers=self.columns, tablefmt="simple", floatfmt=".6f", showindex=False,colalign=("center",) * len(self.columns)))
     @timer
     def run_Turbomole(self):
         x2t_dir = subprocess.run(['which', 'x2t'], stdout=subprocess.PIPE).stdout.decode().strip()
