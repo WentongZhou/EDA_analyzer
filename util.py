@@ -22,10 +22,11 @@ def run_commands(commands, log=False):
         stdout, stderr = process.communicate()
         output.append(stdout.decode())
         error.append(stderr.decode())
-        output_list.append([str(i + 1), command, stdout.decode(), stderr.decode()])
+        if log == True:
+            output_list.append([str(i + 1), command, stdout.decode(), stderr.decode()])
     headers = ["#", "Command", "Output_report", "Error_report"]
     if log == True:
-        with open('output.txt', 'w') as f:
+        with open('output.txt', 'a') as f:
             f.write(tabulate(output_list, headers, tablefmt="fancy_grid"))
 def output_parser(file_name: str, error_file: str, output_types: list) -> pd.DataFrame:
         output_values = {output_type: 0 for output_type in output_types}
@@ -44,8 +45,8 @@ def output_parser(file_name: str, error_file: str, output_types: list) -> pd.Dat
                         output_values[output_type] = match.group()
             df = pd.DataFrame(output_values, index=["0"])
             return df
-def xyz_generator(num:str,contents:np.array ):
-    with open('coord.xyz', 'w') as f:
+def xyz_generator(num:str,contents:np.array,name:str='coord.xyz'):
+    with open(name, 'w') as f:
         f.write(num)
         f.write('\n\n')
         np.savetxt(f, contents , fmt='%s')

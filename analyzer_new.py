@@ -59,7 +59,7 @@ class EDA_analyzer():
         self.molecule_extractor()
         self.gridpoints_generator()
         self.gridpoints_filter()
-        self.gridpoints_exporter(self.gridpoints_filtered)
+        xyz_generator('len(self.gridpoints_filtered)',self.gridpoints_filtered.to_numpy(),f'{self.molecule.split(".")[0]}_gridpoints.xyz')
         print(15 * '-' + str(len(self.gridpoints_coordinate)) + ' gridpoints were generated to be filtered' + 15 * '-')
         print(15*'-'+str(len(self.gridpoints_filtered))+' gridpoints were generated after filtration'+15*'-')
     @timer
@@ -102,14 +102,6 @@ class EDA_analyzer():
         self.gridpoints_filtered.insert(0, 'atom_name', self.probe)
         self.gridpoints_filtered.columns = ['atom_name', 'X', 'Y', 'Z']
 
-    def gridpoints_exporter(self,gridpoints):
-        gridpoints.columns = ['atom_name','X','Y','Z']
-        np.savetxt(self.molecule.split('.')[0]+'_grids.xyz',gridpoints.to_numpy(),fmt='%s')
-        with open(self.molecule.split('.')[0]+'_grids.xyz', 'r') as file:
-            contents = file.read()
-        contents = str(len(gridpoints))+'\n\n' + contents
-        with open(self.molecule.split('.')[0]+'_grids.xyz', 'w') as file:
-            file.write(contents)
     def gridpoints_visualizer(self,axis,animation_speed,frame,fps,viewpoint,ovito=[False,False,(600,500),False],*val,eda_val='Eint_total,gas'):
         molecule = self.molecule_coordinates
         gridpoints = self.gridpoints_filtered
