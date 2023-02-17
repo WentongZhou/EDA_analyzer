@@ -50,3 +50,20 @@ def xyz_generator(num:str,contents:np.array,name:str='coord.xyz'):
         f.write(num)
         f.write('\n\n')
         np.savetxt(f, contents , fmt='%s')
+
+
+def merge_grid_eda(energy_file, xyz_file, cavity_file):
+    if 'xTB' in energy_file:
+        a = pd.read_csv(energy_file, sep='\s+', header=None, skiprows=2, usecols=range(0, 9))
+    elif 'Turbomole' in energy_file:
+        a = pd.read_csv(energy_file, sep='\s+', header=None, skiprows=2, usecols=range(1, 11))
+
+    b = pd.read_csv(xyz_file, sep='\s+', header=None, skiprows=2, usecols=range(0, 4))
+    cavity = pd.read_csv(cavity_file, sep='\s+', header=None, skiprows=2, usecols=range(0, 4))
+    c = np.column_stack((b.to_numpy(), a.to_numpy()))
+    d = np.column_stack((cavity.to_numpy(), np.full((len(cavity), a.to_numpy().shape[1]), 2)))
+    e = np.vstack((c, d))
+    with open(f'{xyz_file.split("_")[0]}_total.xyz', 'w') as f:
+        f.write(e.shape[0].__str__())
+        f.write('\n\n')
+        np.savetxt(f, e, fmt='%s')

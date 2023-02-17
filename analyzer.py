@@ -158,10 +158,14 @@ class EDA_analyzer():
                 if len(val) == 0:
                     data.particles_.particle_types_.type_by_name_(self.probe).radius = 0.12
                 else:
-                    data.particles_.particle_types_.type_by_name_(self.probe).radius = 0.02
+                    data.particles_.particle_types_.type_by_name_(self.probe).radius = 1.9
+                    data.particles_.particle_types_.type_by_name_(self.probe).shape = ParticlesVis.Shape.Sphere
             gridpoints_v.modifiers.append(modify_pipeline_input)
             data_1 = gridpoints_v.compute() # Evaluate new pipeline to gain access to visual elements associated with the imported data objects.
-            data_1.particles.vis.radius = 0.2
+            if len(val) == 0:
+                data_1.particles.vis.radius = 0.2
+            else:
+                data_1.particles.vis.enabled = False
             data_1.cell.vis.enabled = False
             del data_1 # Done accessing input DataCollection of pipeline.
             if len(val) != 0:
@@ -173,11 +177,13 @@ class EDA_analyzer():
                     end_value =  min(1,top),
                     gradient = ColorCodingModifier.Rainbow()))
                 mod2 = ConstructSurfaceModifier()
-                mod2.radius = 5
-                mod2.smoothing_level = 35
+                mod2.method = ConstructSurfaceModifier.Method.GaussianDensity
                 mod2.transfer_properties = True
+                mod2.grid_resolution = 100
+                mod2.radius_scaling = 0.4
+                mod2.isolevel = 6.0
                 mod2.vis.show_cap = False
-                mod2.vis.surface_transparency = 0.6
+                mod2.vis.surface_transparency = 0.5
                 gridpoints_v.modifiers.append(mod2)
             else:
                 pass
@@ -186,7 +192,7 @@ class EDA_analyzer():
                 vp.render_anim(size=ovito[2], filename=self.molecule.split('.')[0] + '_'+eda_val+'_gridpoints_rotations.gif', fps=fps)
             else:
                 mol = self.molecule.split('.')[0]
-                vp.render_image(size=ovito[2], frame=frame, filename=f'{mol}_{frame}_gridpoints.png')
+                vp.render_image(size=ovito[2], frame=frame, filename=f'{mol}_{frame}_{label}_gridpoints.png')
                 widget = vp.create_jupyter_widget(layout = ipywidgets.Layout(width='2000px', height='500px'))
                 display(widget)
             molecule_v.remove_from_scene()
@@ -330,7 +336,8 @@ class EDA_analyzer():
                 values = ['0']*10
             self.gridpoints_Turbomole.append(values)
             with open('energies_Turbomole.out','a') as f:
-                f.writelines(values)
+                #write values with delimiter
+                f.write(','.join(values))
                 f.write('\n')
         os.system(f'mv -f energies_Turbomole.out ../{self.molecule.split(".")[0]}_Turbomole_Energies.out')
         self.gridpoints_Turbomole = pd.DataFrame(self.gridpoints_Turbomole,columns=['Eint_total','Eint_el','Eint_nuc','Eint_1e','Eint_2e','Eint_ex_rp','Eint_ex','Eint_rp','Eint_orb','Eint_cor','Eint_disp'],dtype=float)
