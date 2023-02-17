@@ -192,7 +192,7 @@ class EDA_analyzer():
                 vp.render_anim(size=ovito[2], filename=self.molecule.split('.')[0] + '_'+eda_val+'_gridpoints_rotations.gif', fps=fps)
             else:
                 mol = self.molecule.split('.')[0]
-                vp.render_image(size=ovito[2], frame=frame, filename=f'{mol}_{frame}_{label}_gridpoints.png')
+                vp.render_image(size=ovito[2], frame=frame, filename=f'{mol}_{frame}_{eda_val}_gridpoints.png')
                 widget = vp.create_jupyter_widget(layout = ipywidgets.Layout(width='2000px', height='500px'))
                 display(widget)
             molecule_v.remove_from_scene()
