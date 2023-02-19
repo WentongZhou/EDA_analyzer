@@ -30,7 +30,7 @@ def timer(func):
         return result
     return wrapper
 class EDA_analyzer():
-    def __init__(self,molecule,probe='Li',boundary=10,grid_spacing=1,sieve=5,cavity_thres=3):
+    def __init__(self,molecule,probe='Li',boundary=10,grid_spacing=1,sieve=5,cavity_thres=3,ele_density=False,isovalue=(0.05,0.1)):
         self.molecule = molecule
         self.probe = probe
         self.molecule_coordinates = []
@@ -40,7 +40,7 @@ class EDA_analyzer():
         self.cavity_thres = cavity_thres
         self.origin = []
         self.molecule_extractor()
-        self.gridpoints_generator()
+        self.gridpoints_generator(density= ele_density,isoval=isovalue,gfn=1,chrg=0)
         self.gridpoints_filter()
         self.gridpoints_exporter(self.gridpoints_filtered)
         print(15 * '-' + str(len(self.gridpoints_coordinate)) + ' gridpoints were generated to be filtered' + 15 * '-')
@@ -59,16 +59,47 @@ class EDA_analyzer():
         dist=[distance.euclidean(self.origin,coordinate) for coordinate in coordinates]
         self.grid_length = np.array(dist).max()*1.414 + self.boundary
     @timer
-    def gridpoints_generator(self):
-        length  = self.grid_length
-        spacing = self.grid_spacing
-        x = linspace(self.origin[0] - length/2, self.origin[0] + length/2, int(length/spacing) + 1)
-        y = linspace(self.origin[1] - length/2, self.origin[1] + length/2, int(length/spacing) + 1)
-        z = linspace(self.origin[2] - length/2, self.origin[2] + length/2, int(length/spacing) + 1)
-        self.X, self.Y, self.Z = np.meshgrid(x, y, z)
-        grid = np.stack((self.X, self.Y, self.Z), axis=-1)
-        self.gridpoints_coordinate = pd.DataFrame(np.reshape(grid, (-1, 3)))
-        self.gridpoints_coordinate.insert(0,'atom_name',self.probe)
+    def gridpoints_generator(self,density=False,isoval=(0.05,0.1),gfn=1,chrg=0):
+        if density == False:
+            length  = self.grid_length
+            spacing = self.grid_spacing
+            x = linspace(self.origin[0] - length/2, self.origin[0] + length/2, int(length/spacing) + 1)
+            y = linspace(self.origin[1] - length/2, self.origin[1] + length/2, int(length/spacing) + 1)
+            z = linspace(self.origin[2] - length/2, self.origin[2] + length/2, int(length/spacing) + 1)
+            self.X, self.Y, self.Z = np.meshgrid(x, y, z)
+            grid = np.stack((self.X, self.Y, self.Z), axis=-1)
+            self.gridpoints_coordinate = pd.DataFrame(np.reshape(grid, (-1, 3)))
+            self.gridpoints_coordinate.insert(0,'atom_name',self.probe)
+            self.gridpoints_coordinate.columns = ['atom_name', 'X', 'Y', 'Z']
+        else:
+            multiwfn_dir = subprocess.run(['which', 'Multiwfn'], stdout=subprocess.PIPE).stdout.decode().strip()
+            def run_multiwfn(file,isoval=(0.05, 0.1)):
+                print(15 * '-' + 'wavefunction file found' + 15 * '-')
+                module_dir = os.path.dirname(__file__)
+                file_path = os.path.join(module_dir, 'den.txt')
+                process = subprocess.Popen(f"{multiwfn_dir} {file} < {file_path}",
+                                           shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                stdout, stderr = process.communicate()
+                df = pd.DataFrame(np.loadtxt('output.txt'))
+                df1 = df[df[3] > isoval[0]]
+                self.gridpoints_coordinate = df1[df1[3] < isoval[1]]
+                self.gridpoints_coordinate.insert(0, 'atom_name', self.probe)
+                self.gridpoints_coordinate = self.gridpoints_coordinate.iloc[:, 0:4]
+                self.gridpoints_coordinate.columns = ['atom_name', 'X', 'Y', 'Z']
+                os.remove('output.txt')
+            if os.path.isfile(f'{self.molecule.split(".")[0]}.molden'):
+                run_multiwfn(f'{self.molecule.split(".")[0]}.molden',isoval=isoval)
+            else:
+                os.mkdir('xtb_temp')
+                os.system(f'cp -f {self.molecule} xtb_temp')
+                os.chdir('xtb_temp')
+                xtb_dir = subprocess.run(['which', 'xtb'], stdout=subprocess.PIPE).stdout.decode().strip()
+                subprocess.run([xtb_dir, self.molecule, '--molden', f'--gfn {gfn}',f'--chrg {chrg}'], stdout=subprocess.DEVNULL)
+                os.system(f'cp -f molden.input ../{self.molecule.split(".")[0]}.molden')
+                os.chdir('..')
+                os.system('rm -rf xtb_temp')
+                run_multiwfn(f'{self.molecule.split(".")[0]}.molden', isoval=isoval)
+
     @timer
     def gridpoints_filter(self):
         gridpoints = self.gridpoints_coordinate.iloc[:,1:4].to_numpy(dtype=float)
@@ -180,7 +211,7 @@ class EDA_analyzer():
                 mod2.method = ConstructSurfaceModifier.Method.GaussianDensity
                 mod2.transfer_properties = True
                 mod2.grid_resolution = 100
-                mod2.radius_scaling = 0.4
+                mod2.radius_scaling = 0.3
                 mod2.isolevel = 6.0
                 mod2.vis.show_cap = False
                 mod2.vis.surface_transparency = 0.5
