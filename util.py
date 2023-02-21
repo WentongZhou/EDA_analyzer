@@ -9,13 +9,22 @@ from sklearn.cluster import KMeans
 from scipy.spatial.distance import cdist
 import numpy as np
 
-def get_paths(name,args=('1','2','3')):
+def get_paths_(name,args=('1','2','3')):
     os.makedirs(os.path.join(os.getcwd(), name),exist_ok=True)
     dir = [os.getcwd(),os.path.join(os.getcwd(),name)]
     for arg in args:
         os.makedirs(os.path.join(os.getcwd(),name,arg),exist_ok=True)
         dir.append(os.path.join(os.getcwd(),name,arg))
     return tuple(dir)
+def get_paths():
+    os.chdir("/home/akiani/Desktop/IRC_EDA/Fragment_A")
+    working_directory = os.getcwd()
+    path_1 = working_directory + '/1'
+    path_2 = working_directory + '/2'
+    path_3 = working_directory + '/3'
+    return working_directory, path_1, path_2, path_3
+
+
 # def run_commands(commands, log=False):
 #     output, error, output_list = ([], [], [])
 #     for i, command in enumerate(commands):

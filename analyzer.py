@@ -17,6 +17,8 @@ from ovito.data import *
 from ovito.pipeline import *
 from ovito.vis import *
 from tabulate import tabulate
+from EDA_analyzer.util import *
+from tqdm import tqdm
 import re
 import time
 def timer(func):
@@ -327,83 +329,84 @@ class EDA_analyzer():
         with open(f"{self.molecule.split('.')[0]}_xTB_energy_values.md", "w") as f:
             f.write(tabulate(self.gridpoints_normalized_xTB, headers=self.columns, tablefmt="simple", floatfmt=".6f", showindex=False,colalign=("center",) * len(self.columns)))
     @timer
-    def run_Turbomole(self):
-        x2t_dir = subprocess.run(['which', 'x2t'], stdout=subprocess.PIPE).stdout.decode().strip()
-        define_dir = subprocess.run(['which', 'define'], stdout=subprocess.PIPE).stdout.decode().strip()
-        ridft_dir = subprocess.run(['which', 'ridft'], stdout=subprocess.PIPE).stdout.decode().strip()
-        promowa_dir = subprocess.run(['which', 'promowa'], stdout=subprocess.PIPE).stdout.decode().strip()
-        path = str(os.getcwd())
-        path_1 = path + '/1'
-        path_2 = path + '/2'
-        path_3 = path + '/3'
-        with open('coord','w') as f:
-            subprocess.run([x2t_dir, self.molecule], stdout=f)
-        os.mkdir('1')
-        os.system('mv -f coord 1')
-        os.chdir(path_1)
-        os.system(f'{define_dir} < ../def1 > out 2> out1')
-        with open('control', 'r') as f:
-            lines = f.readlines()
-            lines.insert(-1, '$scfdenapproxl 0\n')
-        with open('control', 'w') as f:
-            f.writelines(lines)
-        os.system(f'{ridft_dir} > out 2> out1')
-        os.chdir(path)
-        os.system('mkdir 2 3')
-        self.gridpoints_Turbomole = []
-        for i in range(len(self.gridpoints_filtered)):
-            os.chdir(path_2)
-            self.gridpoints_exporter(self.gridpoints_filtered.iloc[i:i + 1])
-            with open('coord', 'w') as f:
-                subprocess.run([x2t_dir, f'{self.molecule.split(".")[0]}_grids.xyz'], stdout=f)
-            os.system(f'{define_dir} < ../def2 > out 2> out1')
-            with open('control', 'r') as f:
-                lines = f.readlines()
-                lines.insert(-1, '$scfdenapproxl 0\n')
-            with open('control', 'w') as f:
-                f.writelines(lines)
-            os.system(f'{ridft_dir} > out 2> out1')
-            os.chdir(path_3)
-            combined = pd.concat([self.molecule_coordinates,self.gridpoints_filtered.iloc[i:i + 1]],axis=0)
-            self.gridpoints_exporter(combined)
-            with open('coord', 'w') as f:
-                subprocess.run([x2t_dir, f'{self.molecule.split(".")[0]}_grids.xyz'], stdout=f)
-            os.system(f'{define_dir} < ../def3 > out 2> out1')
-            with open('control', 'r') as f:
-                lines = f.readlines()
-                con1 = path_1 + '/control'
-                con2 = path_2 + '/control'
-                if i == 0:
-                    lines.insert(-6, '$scfdenapproxl 0\n')
-                    lines.insert(-6, '$subsystems\n')
-                    lines.insert(-6, f'molecule#1 file={con1}\n')
-                    lines.insert(-6, f'molecule#2 file={con2}\n')
-            with open('control', 'w') as f:
-                f.writelines(lines)
-            subprocess.run([promowa_dir], stdout=subprocess.PIPE)
-            with open('ridft.out','w') as f:
-                result = subprocess.run([ridft_dir], stdout=f,stderr=subprocess.PIPE)
-            if 'normally' in result.stderr.decode():
-                    with open('ridft.out', 'r') as f:
-                        lines = f.readlines()
-                    with open('ridft.out', 'r') as f:
-                        for index, line in enumerate(f):
-                            if line.find('Total Interaction energy') != -1:
-                                values = [line.split(' ')[-3] for line in lines[index:index+12]]
-                                del values[1]
-            else:
-                values = ['0']*10
-            self.gridpoints_Turbomole.append(values)
-            with open('energies_Turbomole.out','a') as f:
-                #write values with delimiter
-                f.write(','.join(values))
-                f.write('\n')
-        os.system(f'mv -f energies_Turbomole.out ../{self.molecule.split(".")[0]}_Turbomole_Energies.out')
-        self.gridpoints_Turbomole = pd.DataFrame(self.gridpoints_Turbomole,columns=['Eint_total','Eint_el','Eint_nuc','Eint_1e','Eint_2e','Eint_ex_rp','Eint_ex','Eint_rp','Eint_orb','Eint_cor','Eint_disp'],dtype=float)
-        os.chdir(path)
-        os.system('rm -rf 1 2 3')
-        return self.gridpoints_Turbomole
-            
+    def run_Turbomole(self,cores):
+        working_directory, path_1, path_2, path_3 = get_paths()
+        frag_a =[
+            f"export PARNODES={cores}",
+            "mkdir 1", # create directory 1
+            f"cp -f {self.molecule} {path_1}", # copy the molecule file to path_1
+            f"cd {path_1}", # change the working directory to path_1
+            f"x2t {self.molecule} > coord", # convert xyz coordinates to internal coordinates
+            "define < ../def1 > out 2> out1", # run the define command with def1 file as input
+            "head -n -1 control > temp.txt",
+            "echo '$scfdenapproxl 0' >> temp.txt",
+            "echo '$end' >> temp.txt",
+            "rm control",# remove the control file
+            "mv temp.txt control",
+            "ridft > ridft.out 2> out1", # run the ridft command
+            f"cd {working_directory}",# change the working directory to the working directory
+            "mkdir 2 3", # create directory 2 and 3
+            f"cp def2 {path_2}"]
+        frag_b =[
+                f"export PARNODES={cores}",
+                "x2t coord.xyz > coord",  # convert xyz coordinates to internal coordinates
+                "define < ../def2 > out 2> out1",  # run the define command with def1 file as input
+                "head -n -1 control > temp.txt",
+                "echo '$scfdenapproxl 0' >> temp.txt",
+                "echo '$end' >> temp.txt",
+                "rm control",
+                "mv temp.txt control",
+                "ridft > ridft.out 2> out1",  # run the ridft command
+                f"cd {working_directory}"]
+        Supramolecule = [
+                f"export PARNODES={cores}",
+                "x2t coord.xyz > coord",  # convert xyz coordinates to Turbomol coordinates
+                "define < ../../def3 > out 2> out1",  # run the define command with def1 file as input
+                "head -n -1 control > temp.txt",  # remove the last line of the control file
+                "echo '$scfdenapproxl 0' >> temp.txt",  # add the scfdenapproxl line to the temp file
+                "echo '$subsystems' >> temp.txt",  # add the subsystems line to the temp file
+                f"echo ' molecule#1 file={path_1}/control' >> temp.txt",  # add the molecule#1 line to the temp file
+                f"echo ' molecule#2 file={path_2}/control' >> temp.txt",  # add the molecule#2 line to the temp file
+                "echo '$end' >> temp.txt",  #
+                "rm control",  # remove the control file
+                "mv temp.txt control",  # replace the control file with the new control file
+                'promowa > out 2> out1',
+                "ridft > ridft.out 2> out",  # run the ridft command
+            ]
+        run_commands(frag_a, output_file="output.txt")
+        eda_energy_df = pd.DataFrame()
+        print('----------------------GRID EDA INITIATED-------------------')
+        with tqdm(total=(len(self.gridpoints_filtered)), desc='Grid Initiated', unit="gridpoint") as pbar:
+            for i, gridpoint in enumerate(self.gridpoints_filtered.to_numpy()):
+                pbar.set_description(f"grid {i + 1} of {len(self.gridpoints_filtered) + 1}")
+                os.chdir(path_2)
+                with open('coord.xyz', 'w') as f:
+                    f.write('1')
+                    f.write('\n\n')
+                    np.savetxt(f, self.gridpoints_filtered.iloc[i:i + 1].to_numpy(), fmt='%s')
+                run_commands(frag_b, output_file="output.txt")
+                os.chdir(path_3)
+                combined_coordinates = np.concatenate((self.molecule_coordinates.to_numpy(), gridpoint.to_numpy()),axis=0)
+                xyz_generator(f'{len(self.molecule_coordinates) + 1}', combined_coordinates)
+                run_commands(Supramolecule, output_file="output.txt")
+                df = output_parser('ridft.out', 'dscf_problem')
+                df["grid_index"] = i
+                df.set_index("grid_index", inplace=True)
+                eda_energy_df = pd.concat([eda_energy_df, df], ignore_index=False)
+                os.chdir(str(working_directory))
+                # print(f'        -------GRIDPOINT {i+1} of {len(test.gridpoints_filtered)+1} being Calculated-------')
+                with open(f"energy_values_{self.molecule.split['.'][0]}.md", "w") as f:
+                    f.write(tabulate(eda_energy_df,
+                                     headers=["Grid Index", "Tot", "Electro", "Nuc-Nuc", "1e", "2e", "Exc-Rep", "Exc",
+                                              "Rep", "Orb Relax", "Corr", "Disp"],
+                                     tablefmt="simple", floatfmt=".10f",
+                                     colalign=(
+                                     "center", "center", "center", "center", "center", "center", "center", "center",
+                                     "center", "center", "center", "center")))
+                os.system('rm -r 2 3')
+                os.system('mkdir 2 3')
+                pbar.update(1)
+        print('---------------------GRID EDA COMPLETED---------------------')
           
          
                 
