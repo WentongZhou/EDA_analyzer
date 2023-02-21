@@ -286,48 +286,49 @@ class EDA_analyzer():
     def run_xTB(self,gfn=1,chrg=1):
         xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
         xtbiff_dir = subprocess.run(['which','xtbiff'],stdout=subprocess.PIPE).stdout.decode().strip()
-        path = str(os.getcwd())
-        path_1 = path + '/1'
-        path_2 = path + '/2'
-        path_3 = path + '/3'
+        working_directory, path_1, path_2, path_3 = get_paths()
+        print('----------------------GRID EDA INITIATED-------------------')
         os.system('mkdir 1')
         os.system('cp '+self.molecule+ ' 1')
         os.chdir(path_1)
         subprocess.run([xtb_dir, self.molecule, '--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
         os.rename('xtblmoinfo','1')
-        os.chdir(path)
+        os.chdir(working_directory)
         os.system('mkdir 2 3')
         os.system('mv -f ' + path_1 + '/1 ' + path_3)
         self.gridpoints_xTB = []
-        for self.i,gridpoint in enumerate(self.gridpoints_filtered.to_numpy()):
-            os.chdir(path_2)
-            with open('gridpoint.xyz','w') as f:
-                f.write('1')
-                f.write('\n\n')
-                np.savetxt(f,self.gridpoints_filtered.iloc[self.i:self.i+1].to_numpy(),fmt='%s')
-            subprocess.run([xtb_dir, 'gridpoint.xyz',f'--chrg {chrg}' ,'--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
-            os.rename('xtblmoinfo','2')
-            os.system('mv -f '+'2 '+ path_3)
-            os.chdir(path_3)
-            with open('int.txt','w') as f:
-                subprocess.run([xtbiff_dir, '1','2' ,'-sp'],stdout=f)
+        with tqdm(total=(len(self.gridpoints_filtered)), desc='Grid Initiated', unit="gridpoint") as pbar:
+            for self.i,gridpoint in enumerate(self.gridpoints_filtered.to_numpy()):
+                os.chdir(path_2)
+                with open('gridpoint.xyz','w') as f:
+                    f.write('1')
+                    f.write('\n\n')
+                    np.savetxt(f,self.gridpoints_filtered.iloc[self.i:self.i+1].to_numpy(),fmt='%s')
+                subprocess.run([xtb_dir, 'gridpoint.xyz',f'--chrg {chrg}' ,'--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
+                os.rename('xtblmoinfo','2')
+                os.system('mv -f '+'2 '+ path_3)
+                os.chdir(path_3)
+                with open('int.txt','w') as f:
+                    subprocess.run([xtbiff_dir, '1','2' ,'-sp'],stdout=f)
+                with open('int.txt', 'r') as f:
+                    lines = f.readlines()
+                    gridpoint_EDA =np.array([line.split(':')[1] for line in lines[-11:-1]]).astype(float)
+                self.gridpoints_xTB.append(gridpoint_EDA)
+                pbar.update(1)
             with open('int.txt', 'r') as f:
                 lines = f.readlines()
-                gridpoint_EDA =np.array([line.split(':')[1] for line in lines[-11:-1]]).astype(float)
-            self.gridpoints_xTB.append(gridpoint_EDA)
-        with open('int.txt', 'r') as f:
-            lines = f.readlines()
-            self.columns =np.array(["_".join((line.split(':')[0]).split()) for line in lines[-11:-1]]).tolist()
-        self.gridpoints_xTB = pd.DataFrame(self.gridpoints_xTB)
-        self.gridpoints_xTB.columns = self.columns
-        os.chdir(path)
-        os.system('rm -rf 1 2 3')
-        scaler = MinMaxScaler()
-        self.gridpoints_normalized_xTB =pd.DataFrame(scaler.fit_transform(self.gridpoints_xTB[self.columns]))
-        self.gridpoints_normalized_xTB.columns = self.columns
-        self.gridpoints_normalized = self.gridpoints_normalized_xTB
-        with open(f"{self.molecule.split('.')[0]}_xTB_energy_values.md", "w") as f:
-            f.write(tabulate(self.gridpoints_normalized_xTB, headers=self.columns, tablefmt="simple", floatfmt=".6f", showindex=False,colalign=("center",) * len(self.columns)))
+                self.columns =np.array(["_".join((line.split(':')[0]).split()) for line in lines[-11:-1]]).tolist()
+            self.gridpoints_xTB = pd.DataFrame(self.gridpoints_xTB)
+            self.gridpoints_xTB.columns = self.columns
+            os.chdir(working_directory)
+            os.system('rm -rf 1 2 3')
+            scaler = MinMaxScaler()
+            self.gridpoints_normalized_xTB =pd.DataFrame(scaler.fit_transform(self.gridpoints_xTB[self.columns]))
+            self.gridpoints_normalized_xTB.columns = self.columns
+            self.gridpoints_normalized = self.gridpoints_normalized_xTB
+            with open(f"{self.molecule.split('.')[0]}_xTB_energy_values.md", "w") as f:
+                f.write(tabulate(self.gridpoints_normalized_xTB, headers=self.columns, tablefmt="simple", floatfmt=".6f", showindex=False,colalign=("center",) * len(self.columns)))
+            print('----------------------GRID EDA COMPLETED-------------------')
     @timer
     def run_Turbomole(self,cores):
         working_directory, path_1, path_2, path_3 = get_paths()
@@ -386,7 +387,7 @@ class EDA_analyzer():
                     np.savetxt(f, self.gridpoints_filtered.iloc[i:i + 1].to_numpy(), fmt='%s')
                 run_commands(frag_b, output_file="output.txt")
                 os.chdir(path_3)
-                combined_coordinates = np.concatenate((self.molecule_coordinates.to_numpy(), gridpoint.to_numpy()),axis=0)
+                combined_coordinates = np.concatenate((self.molecule_coordinates.iloc[0,1:4].to_numpy(), gridpoint.to_numpy()),axis=0)
                 xyz_generator(f'{len(self.molecule_coordinates) + 1}', combined_coordinates)
                 run_commands(Supramolecule, output_file="output.txt")
                 df = output_parser('ridft.out', 'dscf_problem')
@@ -395,10 +396,10 @@ class EDA_analyzer():
                 eda_energy_df = pd.concat([eda_energy_df, df], ignore_index=False)
                 os.chdir(str(working_directory))
                 # print(f'        -------GRIDPOINT {i+1} of {len(test.gridpoints_filtered)+1} being Calculated-------')
-                with open(f"energy_values_{self.molecule.split['.'][0]}.md", "w") as f:
+                with open(f"energy_values_{self.molecule.split('.')[0]}.md", "w") as f:
                     f.write(tabulate(eda_energy_df,
-                                     headers=["Grid Index", "Tot", "Electro", "Nuc-Nuc", "1e", "2e", "Exc-Rep", "Exc",
-                                              "Rep", "Orb Relax", "Corr", "Disp"],
+                                     headers=["Grid_Index", "Tot", "Electro", "Nuc_Nuc", "1e", "2e", "Exc_Rep", "Exc",
+                                              "Rep", "Orb_Relax", "Corr", "Disp"],
                                      tablefmt="simple", floatfmt=".10f",
                                      colalign=(
                                      "center", "center", "center", "center", "center", "center", "center", "center",
@@ -407,23 +408,6 @@ class EDA_analyzer():
                 os.system('mkdir 2 3')
                 pbar.update(1)
         print('---------------------GRID EDA COMPLETED---------------------')
-          
-         
-                
-                    
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     def xyz_exporter(self,axis,animation_speed,*val,vp=Viewport(type = Viewport.Type.Front,fov = 11,camera_pos = (0,0,0),camera_dir = (1,0,0))):

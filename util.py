@@ -140,3 +140,25 @@ def MIF_filter_recursion(clusters=10,gridpoints:np.array=None):
         return filtered
     else:
         return MIF_filter_recursion(clusters+1,filtered)
+
+
+def extract_energy_values(file_name: str, error_file: str) -> pd.DataFrame:
+    energy_types = ['Total Interaction energy', 'Electrostatic Interaction', 'Nuc---Nuc', '1-electron', '2-electron',
+                    'Exchange-Repulsion', 'Exchange Int.', 'Repulsion', 'Orbital Relaxation', 'Correlation Interaction',
+                    'Dispersion Interaction']
+    energy_values = {energy_type: 0 for energy_type in energy_types}
+
+    if os.path.isfile(error_file):
+        df = pd.DataFrame(energy_values, index=["0"])
+        return df
+    else:
+        with open(file_name, 'r') as f:
+            lines = f.read()
+            energy_types_re = "|".join(energy_types)
+            matches = re.finditer(f"{energy_types_re}(?=.*-?\d+\.\d+)", lines)
+            for match in matches:
+                energy_type = match.group()
+                energy_values[energy_type] = re.search(r'-?\d+\.\d+', lines[match.end():]).group()
+
+        df = pd.DataFrame(energy_values, index=["0"])
+        return df
