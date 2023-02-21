@@ -1,0 +1,36 @@
+
+
+a coord
+ired
+*
+no
+b
+all def2-SVP
+*
+eht
+
+0
+
+scf
+iter
+600
+
+dft
+on
+grid
+4
+
+
+ri
+on
+m
+0
+
+
+dsp
+on
+bj
+
+*
+
+
