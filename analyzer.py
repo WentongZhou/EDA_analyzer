@@ -344,7 +344,7 @@ class EDA_analyzer():
         working_directory, path_1, path_2, path_3 = get_paths()
         frag_a =[
             f"export PARNODES={cores}",
-            "mkdir 1", # create directory 1
+            f"mkdir 1", # create directory 1
             f"cp -f {self.molecule} {path_1}", # copy the molecule file to path_1
             f"cd {path_1}", # change the working directory to path_1
             f"x2t {self.molecule} > coord", # convert xyz coordinates to internal coordinates
@@ -397,7 +397,7 @@ class EDA_analyzer():
                     np.savetxt(f, self.gridpoints_filtered.iloc[i:i + 1].to_numpy(), fmt='%s')
                 run_commands(frag_b, output_file="output.txt")
                 os.chdir(path_3)
-                combined_coordinates = np.concatenate((self.molecule_coordinates.iloc[0,1:4].to_numpy(), gridpoint.to_numpy()),axis=0)
+                combined_coordinates = np.vstack((self.molecule_coordinates.to_numpy(), self.gridpoints_filtered.iloc[i:i + 1].to_numpy()))
                 xyz_generator(f'{len(self.molecule_coordinates) + 1}', combined_coordinates)
                 run_commands(Supramolecule, output_file="output.txt")
                 df = output_parser('ridft.out', 'dscf_problem')
