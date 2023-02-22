@@ -400,7 +400,7 @@ class EDA_analyzer():
                 combined_coordinates = np.vstack((self.molecule_coordinates.to_numpy(), self.gridpoints_filtered.iloc[i:i + 1].to_numpy()))
                 xyz_generator(f'{len(self.molecule_coordinates) + 1}', combined_coordinates)
                 run_commands(Supramolecule, output_file="output.txt")
-                df = output_parser('ridft.out', 'dscf_problem')
+                df = extract_energy_values('ridft.out', 'dscf_problem')
                 df["grid_index"] = i
                 df.set_index("grid_index", inplace=True)
                 eda_energy_df = pd.concat([eda_energy_df, df], ignore_index=False)
