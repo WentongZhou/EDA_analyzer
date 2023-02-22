@@ -63,6 +63,7 @@ class EDA_analyzer():
         self.grid_length = np.array(dist).max()*1.414 + self.boundary
     @timer
     def gridpoints_generator(self,grids_source = 'cubic',isoval=(0.05,0.1),gfn=1,chrg=0):
+        multiwfn_dir = subprocess.run(['which', 'Multiwfn'], stdout=subprocess.PIPE).stdout.decode().strip()
         def run_multiwfn(file, isoval=(0.05, 0.1)):
             print(15 * '-' + 'wavefunction file found' + 15 * '-')
             module_dir = os.path.dirname(__file__)
@@ -103,7 +104,6 @@ class EDA_analyzer():
             self.gridpoints_coordinate.columns = ['atom_name', 'X', 'Y', 'Z']
 
         if grids_source == 'molden':
-            multiwfn_dir = subprocess.run(['which', 'Multiwfn'], stdout=subprocess.PIPE).stdout.decode().strip()
             run_multiwfn(f'{self.molecule.split(".")[0]}.molden',isoval=isoval)
 
         if grids_source == 'xtb':
@@ -332,7 +332,12 @@ class EDA_analyzer():
             self.gridpoints_normalized_xTB.columns = self.columns
             self.gridpoints_normalized = self.gridpoints_normalized_xTB
             with open(f"{self.molecule.split('.')[0]}_xTB_energy_values.md", "w") as f:
-                f.write(tabulate(self.gridpoints_normalized_xTB, headers=self.columns, tablefmt="simple", floatfmt=".6f", showindex=False,colalign=("center",) * len(self.columns)))
+                f.write(tabulate(self.gridpoints_xTB, headers=self.columns, tablefmt="simple", floatfmt=".6f", showindex=False,colalign=("center",) * len(self.columns)))
+            df2 = pd.concat([self.gridpoints_filtered, self.gridpoints_xTB], axis=1)
+            with open(f'{self.molecule.split(".")[0]}_xTB.xyz', 'w') as f:
+                f.write(str(len(df2)))
+                f.write('\n\n')
+                np.savetxt(f, df2.to_numpy(), fmt='%s')
             print('----------------------GRID EDA COMPLETED-------------------')
     @timer
     def run_Turbomole(self,cores):
