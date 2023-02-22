@@ -17,30 +17,12 @@ def get_paths_(name,args=('1','2','3')):
         dir.append(os.path.join(os.getcwd(),name,arg))
     return tuple(dir)
 def get_paths():
-    os.chdir("/home/akiani/Desktop/IRC_EDA/Fragment_A")
     working_directory = os.getcwd()
     path_1 = working_directory + '/1'
     path_2 = working_directory + '/2'
     path_3 = working_directory + '/3'
     return working_directory, path_1, path_2, path_3
 
-
-# def run_commands(commands, log=False):
-#     output, error, output_list = ([], [], [])
-#     for i, command in enumerate(commands):
-#         if type(command) == str:
-#             process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-#         if type(command) == list:
-#             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-#         stdout, stderr = process.communicate()
-#         output.append(stdout.decode())
-#         error.append(stderr.decode())
-#         if log == True:
-#             output_list.append([str(i + 1), command, stdout.decode(), stderr.decode()])
-#     headers = ["#", "Command", "Output_report", "Error_report"]
-#     if log == True:
-#         with open('output.txt', 'a') as f:
-#             f.write(tabulate(output_list, headers, tablefmt="fancy_grid"))
 def output_parser(file_name: str, error_file: str, output_types: list) -> pd.DataFrame:
         output_values = {output_type: 0 for output_type in output_types}
         if os.path.isfile(error_file):
@@ -106,7 +88,8 @@ def run_commands(commands, timeout=0, log=False, output_file="output.txt", ):
         f.write(tabulate(output_list, headers, tablefmt="fancy_grid"))
         f.close()
 
-def MIF_filter(clusters=10,threshold=0.2,gridpoints:np.array=None):
+def MIF_filter(clusters=10,threshold=0.2,gridpoints=None):
+    gridpoints = gridpoints.iloc[:,1:4].to_numpy()
     kmeans = KMeans(clusters)
     kmeans.fit(gridpoints)
     labels = kmeans.labels_
@@ -120,6 +103,9 @@ def MIF_filter(clusters=10,threshold=0.2,gridpoints:np.array=None):
                 mask[(j+1):][distances[j, (j+1):] < threshold] = False
         filtered.append(gridpoints[labels==i][mask])
     filtered = np.concatenate(filtered,axis=0)
+    filtered = pd.DataFrame(filtered)
+    filtered.insert(0,'atom_name','Li')
+    filtered.columns = ['atom_name','x','y','z']
     return filtered
 
 def MIF_filter_recursion(clusters=10,gridpoints:np.array=None):

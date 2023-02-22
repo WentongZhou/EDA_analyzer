@@ -31,18 +31,17 @@ def timer(func):
         return result
     return wrapper
 class EDA_analyzer():
-    def __init__(self,molecule,probe='Li',boundary=10,grid_spacing=1,sieve=5,cavity_thres=3,ele_density=False,isovalue=(0.05,0.1),turbomole=False):
+    def __init__(self,molecule,probe='Li',boundary=10,grid_spacing=1,sieve=5,cavity_thres=3,isovalue=(0.05,0.1),grids_source='cubic'):
         self.molecule = molecule
         self.probe = probe
         self.molecule_coordinates = []
         self.boundary = boundary
         self.grid_spacing = grid_spacing
         self.sieve = sieve
-        self.turbomole = turbomole
         self.cavity_thres = cavity_thres
         self.origin = []
         self.molecule_extractor()
-        self.gridpoints_generator(density=ele_density,turbomole=self.turbomole,isoval=isovalue,gfn=1,chrg=0)
+        self.gridpoints_generator(grids_source=self.grids_source,isoval=isovalue,gfn=1,chrg=0)
         self.gridpoints_filter()
         self.gridpoints_exporter(self.gridpoints_filtered)
         print(15 * '-' + str(len(self.gridpoints_coordinate)) + ' gridpoints were generated to be filtered' + 15 * '-')
@@ -61,8 +60,35 @@ class EDA_analyzer():
         dist=[distance.euclidean(self.origin,coordinate) for coordinate in coordinates]
         self.grid_length = np.array(dist).max()*1.414 + self.boundary
     @timer
-    def gridpoints_generator(self,density=False,isoval=(0.05,0.1),gfn=1,chrg=0,turbomole=False):
-        if density == False:
+    def gridpoints_generator(self,grids_source = 'cubic',isoval=(0.05,0.1),gfn=1,chrg=0):
+        def run_multiwfn(file, isoval=(0.05, 0.1)):
+            print(15 * '-' + 'wavefunction file found' + 15 * '-')
+            module_dir = os.path.dirname(__file__)
+            file_path = os.path.join(module_dir, 'den.txt')
+            with open(file_path, 'r') as f:
+                lines = f.readlines()
+            lines.insert(3, f"{self.origin[0]} {self.origin[1]} {self.origin[2]}\n")
+            lines.insert(4,
+                         f"{int(self.grid_length / self.grid_spacing) + 1} {int(self.grid_length / self.grid_spacing) + 1} {int(self.grid_length / self.grid_spacing) + 1}\n")
+            lines.insert(5,
+                         f"{self.grid_length * 1.889725988 / 2} {self.grid_length * 1.889725988 / 2} {self.grid_length * 1.889725988 / 2}\n")
+            with open(f'{module_dir}/{self.molecule.split(".")[0]}_den.txt', 'w') as f:
+                f.writelines(lines)
+            process = subprocess.Popen(f'{multiwfn_dir} {file} < {module_dir}/{self.molecule.split(".")[0]}_den.txt', \
+                                       shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stdout, stderr = process.communicate()
+            df = pd.DataFrame(np.loadtxt('output.txt'))
+            df1 = df[df[3] > isoval[0]]
+            self.gridpoints_coordinate_den = df1[df1[3] < isoval[1]]
+            self.gridpoints_coordinate_den = self.gridpoints_coordinate_den.reset_index(drop=True)
+            self.gridpoints_coordinate_den.insert(0, 'atom_name', self.probe)
+            self.gridpoints_coordinate_den.columns = ['atom_name', 'X', 'Y', 'Z', 'ele_density']
+            self.gridpoints_coordinate = self.gridpoints_coordinate_den.iloc[:, 0:4]
+            self.gridpoints_coordinate.columns = ['atom_name', 'X', 'Y', 'Z']
+            os.remove('output.txt')
+            os.remove(f'{module_dir}/{self.molecule.split(".")[0]}_den.txt')
+
+        if grids_source == 'cubic':
             length  = self.grid_length
             spacing = self.grid_spacing
             x = linspace(self.origin[0] - length/2, self.origin[0] + length/2, int(length/spacing) + 1)
@@ -73,62 +99,39 @@ class EDA_analyzer():
             self.gridpoints_coordinate = pd.DataFrame(np.reshape(grid, (-1, 3)))
             self.gridpoints_coordinate.insert(0,'atom_name',self.probe)
             self.gridpoints_coordinate.columns = ['atom_name', 'X', 'Y', 'Z']
-        else:
+
+        if grids_source == 'molden':
             multiwfn_dir = subprocess.run(['which', 'Multiwfn'], stdout=subprocess.PIPE).stdout.decode().strip()
-            def run_multiwfn(file,isoval=(0.05, 0.1)):
-                print(15 * '-' + 'wavefunction file found' + 15 * '-')
-                module_dir = os.path.dirname(__file__)
-                file_path = os.path.join(module_dir, 'den.txt')
-                with open(file_path, 'r') as f:
-                    lines = f.readlines()
-                lines.insert(3,f"{self.origin[0]} {self.origin[1]} {self.origin[2]}\n")
-                lines.insert(4,f"{int(self.grid_length/self.grid_spacing) + 1} {int(self.grid_length/self.grid_spacing) + 1} {int(self.grid_length/self.grid_spacing) + 1}\n")
-                lines.insert(5,f"{self.grid_length*1.889725988/2} {self.grid_length*1.889725988/2} {self.grid_length*1.889725988/2}\n")
-                with open(f'{module_dir}/{self.molecule.split(".")[0]}_den.txt', 'w') as f:
-                    f.writelines(lines)
-                process = subprocess.Popen(f'{multiwfn_dir} {file} < {module_dir}/{self.molecule.split(".")[0]}_den.txt',\
-                                           shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                stdout, stderr = process.communicate()
-                df = pd.DataFrame(np.loadtxt('output.txt'))
-                df1 = df[df[3] > isoval[0]]
-                self.gridpoints_coordinate_den = df1[df1[3] < isoval[1]]
-                self.gridpoints_coordinate_den = self.gridpoints_coordinate_den.reset_index(drop=True)
-                self.gridpoints_coordinate_den.insert(0, 'atom_name', self.probe)
-                self.gridpoints_coordinate_den.columns = ['atom_name', 'X', 'Y', 'Z','ele_density']
-                self.gridpoints_coordinate = self.gridpoints_coordinate_den.iloc[:, 0:4]
-                self.gridpoints_coordinate.columns = ['atom_name', 'X', 'Y', 'Z']
-                os.remove('output.txt')
-                os.remove(f'{module_dir}/{self.molecule.split(".")[0]}_den.txt')
-            if os.path.isfile(f'{self.molecule.split(".")[0]}.molden'):
-                run_multiwfn(f'{self.molecule.split(".")[0]}.molden',isoval=isoval)
-            else:
-                if turbomole == False:
-                    os.mkdir('xtb_temp')
-                    os.system(f'cp -f {self.molecule} xtb_temp')
-                    os.chdir('xtb_temp')
-                    xtb_dir = subprocess.run(['which', 'xtb'], stdout=subprocess.PIPE).stdout.decode().strip()
-                    subprocess.run([xtb_dir, self.molecule, '--molden', f'--gfn {gfn}',f'--chrg {chrg}'], stdout=subprocess.DEVNULL)
-                    os.system(f'cp -f molden.input ../{self.molecule.split(".")[0]}.molden')
-                    os.chdir('..')
-                    os.system('rm -rf xtb_temp')
-                    run_multiwfn(f'{self.molecule.split(".")[0]}.molden', isoval=isoval)
-                else:
-                    x2t_dir = subprocess.run(['which', 'x2t'], stdout=subprocess.PIPE).stdout.decode().strip()
-                    define_dir = subprocess.run(['which', 'define'], stdout=subprocess.PIPE).stdout.decode().strip()
-                    ridft_dir = subprocess.run(['which', 'ridft'], stdout=subprocess.PIPE).stdout.decode().strip()
-                    module_dir = os.path.dirname(__file__)
-                    molden_path = os.path.join(module_dir, 'molden.inp')
-                    def_path = os.path.join(module_dir, 'def')
-                    os.mkdir('turbomole_temp')
-                    os.system(f'cp -f {self.molecule} turbomole_temp')
-                    os.chdir('turbomole_temp')
-                    commands = [f'{x2t_dir} {self.molecule} > coord', f'{define_dir} < {def_path}',
-                                f'{ridft_dir} > ridft.out', f'tm2molden < {molden_path}' \
-                        , f'mv molden.input ../{self.molecule.split(".")[0]}.molden']
-                    run_commands(commands)
-                    os.chdir('..')
-                    run_multiwfn(f'{self.molecule.split(".")[0]}.molden', isoval=isoval)
-                    os.system('rm -rf turbomole_temp')
+            run_multiwfn(f'{self.molecule.split(".")[0]}.molden',isoval=isoval)
+
+        if grids_source == 'xtb':
+            os.mkdir('xtb_temp')
+            os.system(f'cp -f {self.molecule} xtb_temp')
+            os.chdir('xtb_temp')
+            xtb_dir = subprocess.run(['which', 'xtb'], stdout=subprocess.PIPE).stdout.decode().strip()
+            subprocess.run([xtb_dir, self.molecule, '--molden', f'--gfn {gfn}',f'--chrg {chrg}'], stdout=subprocess.DEVNULL)
+            os.system(f'cp -f molden.input ../{self.molecule.split(".")[0]}.molden')
+            os.chdir('..')
+            os.system('rm -rf xtb_temp')
+            run_multiwfn(f'{self.molecule.split(".")[0]}.molden', isoval=isoval)
+
+        if grids_source == 'turbomole':
+            x2t_dir = subprocess.run(['which', 'x2t'], stdout=subprocess.PIPE).stdout.decode().strip()
+            define_dir = subprocess.run(['which', 'define'], stdout=subprocess.PIPE).stdout.decode().strip()
+            ridft_dir = subprocess.run(['which', 'ridft'], stdout=subprocess.PIPE).stdout.decode().strip()
+            module_dir = os.path.dirname(__file__)
+            molden_path = os.path.join(module_dir, 'molden.inp')
+            def_path = os.path.join(module_dir, 'def')
+            os.mkdir('turbomole_temp')
+            os.system(f'cp -f {self.molecule} turbomole_temp')
+            os.chdir('turbomole_temp')
+            commands = [f'{x2t_dir} {self.molecule} > coord', f'{define_dir} < {def_path}',
+                        f'{ridft_dir} > ridft.out', f'tm2molden < {molden_path}' \
+                , f'mv molden.input ../{self.molecule.split(".")[0]}.molden']
+            run_commands(commands)
+            os.chdir('..')
+            run_multiwfn(f'{self.molecule.split(".")[0]}.molden', isoval=isoval)
+            os.system('rm -rf turbomole_temp')
 
     @timer
     def gridpoints_filter(self):
@@ -291,7 +294,7 @@ class EDA_analyzer():
         os.system('mkdir 1')
         os.system('cp '+self.molecule+ ' 1')
         os.chdir(path_1)
-        subprocess.run([xtb_dir, self.molecule, '--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
+        subprocess.run([xtb_dir, self.molecule, '--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         os.rename('xtblmoinfo','1')
         os.chdir(working_directory)
         os.system('mkdir 2 3')
@@ -304,7 +307,7 @@ class EDA_analyzer():
                     f.write('1')
                     f.write('\n\n')
                     np.savetxt(f,self.gridpoints_filtered.iloc[self.i:self.i+1].to_numpy(),fmt='%s')
-                subprocess.run([xtb_dir, 'gridpoint.xyz',f'--chrg {chrg}' ,'--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
+                subprocess.run([xtb_dir, 'gridpoint.xyz',f'--chrg {chrg}' ,'--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                 os.rename('xtblmoinfo','2')
                 os.system('mv -f '+'2 '+ path_3)
                 os.chdir(path_3)
