@@ -36,12 +36,14 @@ class EDA_analyzer():
         self.probe = probe
         self.molecule_coordinates = []
         self.boundary = boundary
+        self.isovalue = isovalue
+        self.grids_source = grids_source
         self.grid_spacing = grid_spacing
         self.sieve = sieve
         self.cavity_thres = cavity_thres
         self.origin = []
         self.molecule_extractor()
-        self.gridpoints_generator(grids_source=self.grids_source,isoval=isovalue,gfn=1,chrg=0)
+        self.gridpoints_generator(grids_source=self.grids_source,isoval=self.isovalue,gfn=1,chrg=0)
         self.gridpoints_filter()
         self.gridpoints_exporter(self.gridpoints_filtered)
         print(15 * '-' + str(len(self.gridpoints_coordinate)) + ' gridpoints were generated to be filtered' + 15 * '-')
