@@ -5,6 +5,7 @@ import re
 import pandas as pd
 import numpy as np
 import select
+import glob
 from sklearn.cluster import KMeans
 from scipy.spatial.distance import cdist
 import numpy as np
@@ -148,3 +149,58 @@ def extract_energy_values(file_name: str, error_file: str) -> pd.DataFrame:
 
         df = pd.DataFrame(energy_values, index=["0"])
         return df
+
+
+
+directory = os.getcwd()
+fragment_A = os.getcwd() + '/Fragment_A'
+fragment_B = os.getcwd() + '/Fragment_B'
+line_numbers_or_ranges = ['13-18']
+def frag_gen(directory, line_numbers_or_ranges):
+    if not os.path.exists(fragment_A):
+        os.makedirs(fragment_A)
+    if not os.path.exists(fragment_B):
+        os.makedirs(fragment_B)
+    for file_path in glob.glob(os.path.join(directory, '*.xyz')):
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+            copied_lines = []
+            not_copied_lines = []
+            for i, line in enumerate(lines):
+                if any(start <= i+1 <= end for start, end in [map(int, x.split('-')) for x in line_numbers_or_ranges if '-' in x]):
+                    copied_lines.append(line)
+                elif str(i+1) in line_numbers_or_ranges:
+                    copied_lines.append(line)
+                else:
+                    not_copied_lines.append(line)
+            new_file_path = os.path.join(fragment_A, os.path.splitext(os.path.basename(file_path))[0] + '_A.xyz')
+            with open(new_file_path, 'w') as new_file:
+                new_file.write(f"{len(copied_lines)}\n")
+                new_file.write("Fragmnet_A\n")
+                new_file.writelines(copied_lines)
+            not_copied_file_path = os.path.join(fragment_B, os.path.splitext(os.path.basename(file_path))[0] + '_B.xyz')
+            with open(not_copied_file_path, 'w') as not_copied_file:
+                not_copied_file.write(f"{len(not_copied_lines)}\n")
+                not_copied_file.write("Fragment_B\n")
+                not_copied_file.writelines(not_copied_lines[2:])
+
+def get_interaction(file,gridsfile):
+    df = pd.read_csv(file, sep='\s+', skiprows=2, header=None)
+    df_1 = pd.read_csv(f'{file.split(".")[0]}_A.md', sep='\s+', skiprows=2, header=None)
+    df_2 = pd.read_csv(f'{file.split(".")[0]}_B.md', sep='\s+', skiprows=2, header=None)
+    interaction = df - df_1 -df_2
+    with open(f"{file.split('.')[0]}_interaction.md", "w") as f:
+        f.write(tabulate(interaction,
+                         headers=["Grid_Index", "Tot", "Electro", "Nuc_Nuc", "1e", "2e", "Exc_Rep", "Exc",
+                                  "Rep", "Orb_Relax", "Corr", "Disp"],
+                         tablefmt="simple", floatfmt=".10f",
+                         colalign=(
+                             "center", "center", "center", "center", "center", "center", "center", "center",
+                             "center", "center", "center", "center")))
+    if os.path.isfile(gridsfile):
+        df_grids = pd.read_csv(gridsfile, sep='\s+', skiprows=2, header=None)
+        merged_df = pd.concat([df_grids, interaction], axis=1)
+        with open(f"{file.split('.')[0]}_interaction.xyz", "w") as f:
+            f.write(str(len(merged_df)) + '\n\n')
+            np.savetxt(f, merged_df.to_numpy(), fmt='%s')
+
