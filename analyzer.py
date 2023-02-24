@@ -111,7 +111,7 @@ class EDA_analyzer():
             os.system(f'cp -f {self.molecule} xtb_temp')
             os.chdir('xtb_temp')
             xtb_dir = subprocess.run(['which', 'xtb'], stdout=subprocess.PIPE).stdout.decode().strip()
-            subprocess.run([xtb_dir, self.molecule, '--molden', f'--gfn {gfn}',f'--chrg {chrg}'], stdout=subprocess.DEVNULL)
+            subprocess.run([f'{xtb_dir}', self.molecule, '--molden', f'--gfn {gfn}',f'--chrg {chrg}'], stdout=subprocess.DEVNULL)
             os.system(f'cp -f molden.input ../{self.molecule.split(".")[0]}.molden')
             os.chdir('..')
             os.system('rm -rf xtb_temp')
@@ -342,26 +342,36 @@ class EDA_analyzer():
     @timer
     def run_Turbomole(self,cores):
         working_directory, path_1, path_2, path_3 = get_paths()
+        if 'def1' or 'def2' or 'def3' not in list(os.walk('./'))[0][2]:
+            module_dir = os.path.dirname(__file__)
+            def1 = os.path.join(module_dir, 'def1')
+            def2 = os.path.join(module_dir, 'def2')
+            def3 = os.path.join(module_dir, 'def3')
+        else:
+            def1 = 'def1'
+            def2 = 'def2'
+            def3 = 'def3'
+        file_path = os.path.join(module_dir, 'def1')
         frag_a =[
-            f"export PARNODES={cores}",
-            f"mkdir 1", # create directory 1
-            f"cp -f {self.molecule} {path_1}", # copy the molecule file to path_1
-            f"cd {path_1}", # change the working directory to path_1
-            f"x2t {self.molecule} > coord", # convert xyz coordinates to internal coordinates
-            "define < ../def1 > out 2> out1", # run the define command with def1 file as input
-            "head -n -1 control > temp.txt",
-            "echo '$scfdenapproxl 0' >> temp.txt",
-            "echo '$end' >> temp.txt",
-            "rm control",# remove the control file
-            "mv temp.txt control",
-            "ridft > ridft.out 2> out1", # run the ridft command
-            f"cd {working_directory}",# change the working directory to the working directory
-            "mkdir 2 3", # create directory 2 and 3
-            f"cp def2 {path_2}"]
+                f"export PARNODES={cores}",
+                f"mkdir 1", # create directory 1
+                f"cp -f {self.molecule} {path_1}", # copy the molecule file to path_1
+                f"cd {path_1}", # change the working directory to path_1
+                f"x2t {self.molecule} > coord", # convert xyz coordinates to internal coordinates
+                f"define < ../{def1} > out 2> out1", # run the define command with def1 file as input
+                "head -n -1 control > temp.txt",
+                "echo '$scfdenapproxl 0' >> temp.txt",
+                "echo '$end' >> temp.txt",
+                "rm control",# remove the control file
+                "mv temp.txt control",
+                "ridft > ridft.out 2> out1", # run the ridft command
+                f"cd {working_directory}",# change the working directory to the working directory
+                "mkdir 2 3", # create directory 2 and 3
+                f"cp {def2} {path_2}"]
         frag_b =[
                 f"export PARNODES={cores}",
                 "x2t coord.xyz > coord",  # convert xyz coordinates to internal coordinates
-                "define < ../def2 > out 2> out1",  # run the define command with def1 file as input
+                f"define < ../{def2} > out 2> out1",  # run the define command with def1 file as input
                 "head -n -1 control > temp.txt",
                 "echo '$scfdenapproxl 0' >> temp.txt",
                 "echo '$end' >> temp.txt",
@@ -372,7 +382,7 @@ class EDA_analyzer():
         Supramolecule = [
                 f"export PARNODES={cores}",
                 "x2t coord.xyz > coord",  # convert xyz coordinates to Turbomol coordinates
-                "define < ../../def3 > out 2> out1",  # run the define command with def1 file as input
+                f"define < ../{def3} > out 2> out1",  # run the define command with def1 file as input
                 "head -n -1 control > temp.txt",  # remove the last line of the control file
                 "echo '$scfdenapproxl 0' >> temp.txt",  # add the scfdenapproxl line to the temp file
                 "echo '$subsystems' >> temp.txt",  # add the subsystems line to the temp file
