@@ -343,21 +343,22 @@ class EDA_analyzer():
     def run_Turbomole(self,cores):
         working_directory, path_1, path_2, path_3 = get_paths()
         frag_a =[
-            f"export PARNODES={cores}",
-            f"mkdir 1", # create directory 1
-            f"cp -f {self.molecule} {path_1}", # copy the molecule file to path_1
-            f"cd {path_1}", # change the working directory to path_1
-            f"x2t {self.molecule} > coord", # convert xyz coordinates to internal coordinates
-            "define < ../def1 > out 2> out1", # run the define command with def1 file as input
-            "head -n -1 control > temp.txt",
-            "echo '$scfdenapproxl 0' >> temp.txt",
-            "echo '$end' >> temp.txt",
-            "rm control",# remove the control file
-            "mv temp.txt control",
-            "ridft > ridft.out 2> out1", # run the ridft command
-            f"cd {working_directory}",# change the working directory to the working directory
-            "mkdir 2 3", # create directory 2 and 3
-            f"cp def2 {path_2}"]
+                f"export PARNODES={cores}",
+                f"mkdir 1", # create directory 1
+                f"cp -f {self.molecule} {path_1}", # copy the molecule file to path_1
+                f"cd {path_1}", # change the working directory to path_1
+                f"x2t {self.molecule} > coord", # convert xyz coordinates to internal coordinates
+                "define < ../def1 > out 2> out1", # run the define command with def1 file as input
+                "head -n -1 control > temp.txt",
+                "echo '$scfdenapproxl 0' >> temp.txt",
+                "echo '$end' >> temp.txt",
+                "rm control",# remove the control file
+                "mv temp.txt control",
+                "ridft > ridft.out 2> out1", # run the ridft command
+                f"cd {working_directory}",# change the working directory to the working directory
+                "mkdir 2 3", # create directory 2 and 3
+                f"cp def2 {path_2}"
+        ]
         frag_b =[
                 f"export PARNODES={cores}",
                 "x2t coord.xyz > coord",  # convert xyz coordinates to internal coordinates
@@ -368,11 +369,12 @@ class EDA_analyzer():
                 "rm control",
                 "mv temp.txt control",
                 "ridft > ridft.out 2> out1",  # run the ridft command
-                f"cd {working_directory}"]
+                f"cd {working_directory}"
+        ]
         Supramolecule = [
                 f"export PARNODES={cores}",
                 "x2t coord.xyz > coord",  # convert xyz coordinates to Turbomol coordinates
-                "define < ../../def3 > out 2> out1",  # run the define command with def1 file as input
+                "define < ../def3 > out 2> out1",  # run the define command with def1 file as input
                 "head -n -1 control > temp.txt",  # remove the last line of the control file
                 "echo '$scfdenapproxl 0' >> temp.txt",  # add the scfdenapproxl line to the temp file
                 "echo '$subsystems' >> temp.txt",  # add the subsystems line to the temp file
@@ -382,8 +384,8 @@ class EDA_analyzer():
                 "rm control",  # remove the control file
                 "mv temp.txt control",  # replace the control file with the new control file
                 'promowa > out 2> out1',
-                "ridft > ridft.out 2> out",  # run the ridft command
-            ]
+                "ridft > ridft.out 2> out"
+        ]
         run_commands(frag_a, output_file="output.txt")
         eda_energy_df = pd.DataFrame()
         print('----------------------GRID EDA INITIATED-------------------')
