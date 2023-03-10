@@ -145,7 +145,7 @@ class EDA_analyzer():
         cavity_index = np.where(np.any((self.dist < self.cavity_thres) , axis=1))[0]
         self.gridpoints_cavity = pd.DataFrame(gridpoints_coordinate[cavity_index])
         self.gridpoints_cavity.insert(0, 'atom_name', self.probe)
-        self.gridpoints_cavity.columns = ['atom_name', 'X', 'Y', 'Z']
+        self.gridpoints_cavity.columns = ['atom_name', 'X', 'Y'"simulation.xyz", 'Z']
         self.gridpoints_filtered_1 = gridpoints_coordinate[filtered_index]
         self.dist_filtered_1 = distance.cdist(self.gridpoints_filtered_1, molecule, metric='euclidean')
         dist_filtered_min_1 = np.amin(self.dist_filtered_1, axis=1)
@@ -288,7 +288,7 @@ class EDA_analyzer():
         self.gridpoints_normalized_LJ.columns = ['LJ_energy']
         self.gridpoints_normalized = self.gridpoints_normalized_LJ
     @timer
-    def run_xTB(self,gfn=1,chrg=1):
+    def run_xTB(self,gfn=1,chrg=1,chrg_1=0):
         xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
         xtbiff_dir = subprocess.run(['which','xtbiff'],stdout=subprocess.PIPE).stdout.decode().strip()
         working_directory, path_1, path_2, path_3 = get_paths()
@@ -296,7 +296,7 @@ class EDA_analyzer():
         os.system('mkdir 1')
         os.system('cp '+self.molecule+ ' 1')
         os.chdir(path_1)
-        subprocess.run([xtb_dir, self.molecule, '--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        subprocess.run(f'xtb {self.molecule} --chrg {chrg_1} --gfn {gfn} --lmo',shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         os.rename('xtblmoinfo','1')
         os.chdir(working_directory)
         os.system('mkdir 2 3')
@@ -309,7 +309,7 @@ class EDA_analyzer():
                     f.write('1')
                     f.write('\n\n')
                     np.savetxt(f,self.gridpoints_filtered.iloc[self.i:self.i+1].to_numpy(),fmt='%s')
-                subprocess.run([xtb_dir, 'gridpoint.xyz',f'--chrg {chrg}' ,'--lmo',f'--gfn {gfn}'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                subprocess.run(f'xtb gridpoint.xyz --chrg {chrg} --gfn {gfn} --lmo',shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                 os.rename('xtblmoinfo','2')
                 os.system('mv -f '+'2 '+ path_3)
                 os.chdir(path_3)
@@ -445,16 +445,17 @@ class EDA_analyzer():
 
 
 class SmilesToXYZ():
-    def __init__(self,smiles,file,conformer_search=False):
+    def __init__(self,smiles,file,chrg=0,conformer_search=False):
         self.smiles = smiles
         self.xtb_dir = subprocess.run(['which','xtb'],stdout=subprocess.PIPE).stdout.decode().strip()
         self.file = file
-        self.__call__()
+        self.chrg = chrg
+        self.__call__(gfn=2,chrg=self.chrg)
         self.crest_dir = subprocess.run(['which', 'crest'], stdout=subprocess.PIPE).stdout.decode().strip()
         if conformer_search == True:
             self.conformer_search()
             self.conformer_sorting()
-    def __call__(self,gfn=2):
+    def __call__(self,gfn=2,chrg=0):
         m = Chem.MolFromSmiles(self.smiles)
         m2=Chem.AddHs(m)
         AllChem.EmbedMolecule(m2)
@@ -465,19 +466,19 @@ class SmilesToXYZ():
         os.system('mkdir opt')
         os.system('mv '+self.file+ ' opt')
         os.chdir(path_opt)
-        subprocess.run([self.xtb_dir, self.file, '--opt',f'--gfn {gfn}'],stdout=subprocess.DEVNULL)
+        subprocess.run([self.xtb_dir, self.file, '--opt',f'--gfn {gfn}',f'--chrg {chrg}'],stdout=subprocess.DEVNULL)
         os.system(f'mv xtbopt.xyz {path}')
         os.chdir(path)
         os.rename('xtbopt.xyz',self.file)
         os.system('rm -rf opt')
     @timer
-    def conformer_search(self,gfn=['1','2'],thread=8,sol='h2o'):
+    def conformer_search(self,gfn=['1','2'],thread=8,sol='h2o',chrg=0):
         os.system(f'rm -rf {self.file.split(".")[0]}_conformers')
         print('Conformer search is started')
         os.mkdir(f'{self.file.split(".")[0]}_conformers')
         os.system(f'cp {self.file} md.inp {self.file.split(".")[0]}_conformers')
         os.chdir(f'{self.file.split(".")[0]}_conformers')
-        os.system(f'{self.xtb_dir} {self.file} --input md.inp --omd --gfn {gfn[0]} --alpb {sol} --T {thread} > md.out')
+        os.system(f'{self.xtb_dir} {self.file} --input md.inp --omd --chrg {chrg} --gfn {gfn[0]} --alpb {sol} --T {thread} > md.out')
         os.rename('xtb.trj','traj.xyz')
         subprocess.run([self.crest_dir,'--mdopt','traj.xyz',f'--gfn {gfn[1]}',f'--alpb {sol}',f'--T {thread}','--niceprint'],stdout= subprocess.DEVNULL)
         os.rename('crest_ensemble.xyz',f'{self.file.split(".")[0]}_ensemble.xyz')

@@ -106,7 +106,7 @@ def MIF_filter(clusters=10,threshold=0.2,gridpoints=None):
     filtered = np.concatenate(filtered,axis=0)
     filtered = pd.DataFrame(filtered)
     filtered.insert(0,'atom_name','Li')
-    filtered.columns = ['atom_name','x','y','z']
+    filtered.columns = ['atom_name','X','Y','Z']
     return filtered
 
 def MIF_filter_recursion(clusters=10,gridpoints:np.array=None):
