@@ -258,7 +258,7 @@ class EDA_analyzer():
                 vp.render_anim(size=ovito[2], filename=self.molecule.split('.')[0] + '_'+eda_val+'_gridpoints_rotations.gif', fps=fps)
             else:
                 mol = self.molecule.split('.')[0]
-                vp.render_image(size=ovito[2], frame=frame, filename=f'{mol}_{frame}_{eda_val}_gridpoints.png')
+                # vp.render_image(size=ovito[2], frame=frame, filename=f'{mol}_{frame}_{eda_val}_gridpoints.png')
                 widget = vp.create_jupyter_widget(layout = ipywidgets.Layout(width='2000px', height='500px'))
                 display(widget)
             molecule_v.remove_from_scene()
@@ -340,7 +340,7 @@ class EDA_analyzer():
                 np.savetxt(f, df2.to_numpy(), fmt='%s')
             print('----------------------GRID EDA COMPLETED-------------------')
     @timer
-    def run_Turbomole(self,cores):
+    def run_Turbomole(self,cores=8):
         working_directory, path_1, path_2, path_3 = get_paths()
         if 'def1' or 'def2' or 'def3' not in list(os.walk('./'))[0][2]:
             module_dir = os.path.dirname(__file__)
@@ -348,9 +348,9 @@ class EDA_analyzer():
             def2 = os.path.join(module_dir, 'def2')
             def3 = os.path.join(module_dir, 'def3')
         else:
-            def1 = 'def1'
-            def2 = 'def2'
-            def3 = 'def3'
+            def1 = '../def1'
+            def2 = '../def2'
+            def3 = '../def3'
         file_path = os.path.join(module_dir, 'def1')
         frag_a =[
                 f"export PARNODES={cores}",
@@ -358,7 +358,7 @@ class EDA_analyzer():
                 f"cp -f {self.molecule} {path_1}", # copy the molecule file to path_1
                 f"cd {path_1}", # change the working directory to path_1
                 f"x2t {self.molecule} > coord", # convert xyz coordinates to internal coordinates
-                f"define < ../{def1} > out 2> out1", # run the define command with def1 file as input
+                f"define < {def1} > out 2> out1", # run the define command with def1 file as input
                 "head -n -1 control > temp.txt",
                 "echo '$scfdenapproxl 0' >> temp.txt",
                 "echo '$end' >> temp.txt",
@@ -367,11 +367,11 @@ class EDA_analyzer():
                 "ridft > ridft.out 2> out1", # run the ridft command
                 f"cd {working_directory}",# change the working directory to the working directory
                 "mkdir 2 3", # create directory 2 and 3
-                f"cp {def2} {path_2}"]
+                f"cp -f {def2} {path_2}"]
         frag_b =[
                 f"export PARNODES={cores}",
                 "x2t coord.xyz > coord",  # convert xyz coordinates to internal coordinates
-                f"define < ../{def2} > out 2> out1",  # run the define command with def1 file as input
+                f"define < {def2} > out 2> out1",  # run the define command with def1 file as input
                 "head -n -1 control > temp.txt",
                 "echo '$scfdenapproxl 0' >> temp.txt",
                 "echo '$end' >> temp.txt",
@@ -382,7 +382,7 @@ class EDA_analyzer():
         Supramolecule = [
                 f"export PARNODES={cores}",
                 "x2t coord.xyz > coord",  # convert xyz coordinates to Turbomol coordinates
-                f"define < ../{def3} > out 2> out1",  # run the define command with def1 file as input
+                f"define < {def3} > out 2> out1",  # run the define command with def1 file as input
                 "head -n -1 control > temp.txt",  # remove the last line of the control file
                 "echo '$scfdenapproxl 0' >> temp.txt",  # add the scfdenapproxl line to the temp file
                 "echo '$subsystems' >> temp.txt",  # add the subsystems line to the temp file
@@ -392,8 +392,7 @@ class EDA_analyzer():
                 "rm control",  # remove the control file
                 "mv temp.txt control",  # replace the control file with the new control file
                 'promowa > out 2> out1',
-                "ridft > ridft.out 2> out",  # run the ridft command
-            ]
+                "ridft > ridft.out 2> out"]
         run_commands(frag_a, output_file="output.txt")
         eda_energy_df = pd.DataFrame()
         print('----------------------GRID EDA INITIATED-------------------')
